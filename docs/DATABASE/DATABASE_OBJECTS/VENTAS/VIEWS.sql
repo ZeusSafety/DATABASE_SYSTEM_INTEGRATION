@@ -1,0 +1,76 @@
+###############################################
+-- VISTAS
+###############################################
+select * from vista_ventas_general
+where N_COMPROBANTE = "F 9640"
+order by ID_VENTA desc;
+DROP VIEW IF EXISTS vista_ventas_general;
+CREATE VIEW vista_ventas_general AS
+SELECT V.ID_CLIENTE, V.ID_VENTA, C.CLIENTE,V.FECHA, V.CLASIFICACION, V.ASESOR, V.N_COMPROBANTE, R.REGION, 
+		D.DISTRITO, L.LUGAR AS LUGAR, V.SALIDA_DE_PEDIDO, V.OBSERVACIONES,P.CANCELADO, P.ESTADO
+		FROM ventas as V
+		-- Join con clientes
+		inner join cliente as C
+		ON V.ID_CLIENTE = C.ID_CLIENTE
+		-- Join con region
+		left join region as R
+		on R.ID = V.ID_REGION
+		-- join con distrito
+		left join distrito AS D
+		ON D.ID = V.ID_DISTRITO
+		-- join con pagos
+		left join pagos AS P
+		ON P.ID_VENTA = V.ID_VENTA
+        -- join con lugar
+        left join lugar as L
+        ON V.ID_LUGAR = L.ID
+		WHERE V.ESTADO = 1;
+        
+DROP VIEW IF EXISTS vista_comprobantes_sin_cancelar;
+CREATE VIEW vista_comprobantes_sin_cancelar AS
+-- LISTADO DE FACTURAS SIN PAGAR
+			-- script para obtener los pagos totales de los comprobantes válidos y no eliminados
+			-- eliminar el limit y order by
+			WITH ABONADO AS (
+			  SELECT SUM(DET.MONTO) AS MONTO,DET.COMPROBANTES
+			  FROM detalle_regularizacion DET
+			  WHERE ESTADO = 1 AND VALIDACION = "VALIDO"
+			  GROUP BY DET.COMPROBANTES
+			),MONTO_TOTAL AS(
+        SELECT N_COMPROBANTE, SUM(TOTAL) as MONTO_TOTAL FROM detalle_venta
+        WHERE ESTADO = 1
+        GROUP BY N_COMPROBANTE
+      ),
+			VENTAS AS (
+			SELECT V.ID_VENTA, C.CLIENTE,V.FECHA, V.ASESOR, V.N_COMPROBANTE, R.REGION, 
+					L.LUGAR AS LUGAR,P.CANCELADO, P.ESTADO, P.TIPO_DE_PAGO as CONDICION_PAGO
+					FROM ventas as V
+					-- Join con clientes
+					inner join cliente as C
+					ON V.ID_CLIENTE = C.ID_CLIENTE
+					-- Join con region
+					left join region as R
+					on R.ID = V.ID_REGION
+					-- join con pagos
+					left join pagos AS P
+					ON P.ID_VENTA = V.ID_VENTA
+					-- join con lugar
+					left join lugar as L
+					ON L.ID = V.ID_LUGAR
+					WHERE V.ESTADO = 1 AND P.CANCELADO = "NO" AND (P.ESTADO IS NULL OR P.ESTADO="COMPLETADO")
+					ORDER BY FECHA DESC
+			), TABLA AS(
+			-- script para unir ambas tablas creadas temporalmente
+			SELECT V.ID_VENTA, V.CLIENTE,V.FECHA, V.ASESOR, V.N_COMPROBANTE, V.REGION, 
+					V.LUGAR,V.CANCELADO, M.MONTO_TOTAL,A.MONTO as TOTAL_ABONADO, CONDICION_PAGO
+      FROM VENTAS AS V
+      -- join con el monto abonado
+			left JOIN ABONADO AS A
+			ON V.N_COMPROBANTE = A.COMPROBANTES
+      -- join con el total a abonar
+      left join MONTO_TOTAL as M
+      ON M.N_COMPROBANTE = V.N_COMPROBANTE
+      )
+      SELECT ID_VENTA,FECHA,  ASESOR ,REGION, LUGAR, CONDICION_PAGO, N_COMPROBANTE, 
+      CLIENTE,MONTO_TOTAL, TOTAL_ABONADO, (MONTO_TOTAL-TOTAL_ABONADO) as POR_ABONAR
+      FROM TABLA;
