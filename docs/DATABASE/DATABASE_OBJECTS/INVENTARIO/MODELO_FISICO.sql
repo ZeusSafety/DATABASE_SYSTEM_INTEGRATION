@@ -1,15 +1,17 @@
-#########################################################
--- TABLAS YA CREADAS
-#########################################################
+-- #########################################################
+-- #########################################################
 CREATE TABLE IF NOT EXISTS INVENTARIO(
 ID INT PRIMARY KEY AUTO_INCREMENT,
 NOMBRE VARCHAR(20) UNIQUE NOT NULL,
 AREA VARCHAR(20) NOT NULL, #AMINISTRACION Y LOGISTICA
 AUTORIZADO_POR INT NOT NULL REFERENCES colaboradores(ID_PERSONA) ,
 FECHA_REGISTRO TIMESTAMP,
+ESTADO_INVENTARIO ENUM('PENDIENTE','COMPLETADO') DEFAULT 'PENDIENTE',
+FECHA_REGISTRO_ESTADO TIMESTAMP NOT NULL,
 ESTADO CHAR(1) DEFAULT 1
 );
-
+-- #########################################################
+-- #########################################################
 CREATE TABLE PUNTO_OPERACION (
     ID INT AUTO_INCREMENT PRIMARY KEY,
     NOMBRE VARCHAR(100) NOT NULL UNIQUE,
@@ -22,6 +24,8 @@ SELECT * FROM PUNTO_OPERACION;
 INSERT INTO PUNTO_OPERACION(NOMBRE, TIPO) VALUES
 ("MALVINAS",'ALMACEN'),("CALLAO",'ALMACEN'),
 ("TIENDA 3006",'TIENDA'), ("TIENDA 3006 B",'TIENDA'), ("TIENDA 3131",'TIENDA'), ("TIENDA 3133",'TIENDA'), ("TIENDA 412-A",'TIENDA');
+-- #########################################################
+-- #########################################################
 CREATE TABLE IF NOT EXISTS TIENDAS(
 ID INT PRIMARY KEY AUTO_INCREMENT,
 ID_PUNTO_OPERACION INT REFERENCES PUNTO_OPERACION(ID),
@@ -32,7 +36,8 @@ ESTADO CHAR(1) DEFAULT 1
 );
 INSERT INTO TIENDAS(ID_PUNTO_OPERACION,ID_ALMACEN) VALUES
 (3,1), (4,1), (5,1), (6,1), (7,1);
-
+-- #########################################################
+-- #########################################################
 CREATE TABLE IF NOT EXISTS ALMACENES(
 ID INT PRIMARY KEY AUTO_INCREMENT,
 ID_PUNTO_OPERACION INT REFERENCES PUNTO_OPERACION(ID),
@@ -41,7 +46,8 @@ CANTIDAD INT DEFAULT 0,
 ESTADO CHAR (1) DEFAULT 1
 );
 INSERT INTO ALMACENES(ID_PUNTO_OPERACION) VALUES (1),(2);
-
+-- #########################################################
+-- #########################################################
 CREATE TABLE IF NOT EXISTS LISTADO_CONTEOS(
 ID INT PRIMARY KEY AUTO_INCREMENT,
 ID_INVENTARIO INT REFERENCES INVENTARIO(ID),
@@ -52,7 +58,8 @@ REGISTRADO_POR_ID INT NOT NULL REFERENCES colaboradores(ID_PERSONA),
 LINK_ARCHIVO_PDF VARCHAR(255),
 ESTADO CHAR(1) DEFAULT 1
 );
-
+-- #########################################################
+-- #########################################################
 CREATE TABLE IF NOT EXISTS LISTADO_CONTEOS_DETALLE(
 ID INT PRIMARY KEY AUTO_INCREMENT,
 ID_LISTADO_CONTEOS INT REFERENCES LISTADO_CONTEOS(ID),
@@ -60,4 +67,50 @@ ID_PRODUCTOS INT REFERENCES PRODUCTOS(ID),
 CANTIDAD INT,
 UNIDAD_MEDIDA VARCHAR(20),
 ESTADO CHAR(1) DEFAULT 1
+);
+-- #########################################################
+-- #########################################################
+CREATE TABLE STOCK_SISTEMA(
+ID INT PRIMARY KEY AUTO_INCREMENT,
+ID_INVENTARIO INT REFERENCES INVENTARIO(ID),
+TIPO_ALMACEN INT REFERENCES ALMACENES(ID),
+ESTADO CHAR(1) DEFAULT 1 -- sumando mas números significa sus versiones
+);
+SELECT * FROM STOCK_SISTEMA;
+DELETE FROM STOCK_SISTEMA WHERE ID=7;
+-- #########################################################
+-- #########################################################
+CREATE TABLE STOCK_SISTEMA_DETALLE(
+ID INT PRIMARY KEY AUTO_INCREMENT,
+ID_STOCK_SISTEMA INT REFERENCES STOCK_SISTEMA(ID),
+CANTIDAD INT NOT NULL,
+PRODUCTO VARCHAR(70) NOT NULL,
+CODIGO VARCHAR(30) NOT NULL,
+ESTADO CHAR(1) DEFAULT 1 -- puede representar el numero de actualizaciones?
+);
+SELECT * FROM STOCK_SISTEMA_DETALLE;
+-- #########################################################
+-- #########################################################
+CREATE TABLE AUDITORIA_COMPARACION(
+ID INT PRIMARY KEY AUTO_INCREMENT,
+ID_INVENTARIO INT REFERENCES INVENTARIO(ID),
+ID_PUNTO_OPERACION INT REFERENCES PUNTO_OPERACION(ID),
+-- ID_LISTADO_CONTEO INT REFERENCES LISTADO_CONTEOS(ID),
+CANTIDAD INT,
+FECHA_REGISTRO TIMESTAMP NOT NULL,
+TIPO_ERROR VARCHAR(30) NOT NULL,
+ID_PRODUCTO INT REFERENCES productos (ID),
+MOTIVO VARCHAR(30) NOT NULL,
+REGISTRADO_POR_ID INT REFERENCES colaboradores(ID_PERSONA),
+ERROR_ID INT REFERENCES colaboradores(ID_PERSONA),
+OBSERVACIONES TEXT,
+ESTADO CHAR(1) DEFAULT 1
+);
+-- #########################################################
+-- TABLAS PARA LOGISTICA Y FACTURACION
+-- #########################################################
+
+CREATE TABLE IF NOT EXISTS FACTURACION_INVENTARIO(
+ID INT PRIMARY KEY AUTO_INCREMENT
+
 );
