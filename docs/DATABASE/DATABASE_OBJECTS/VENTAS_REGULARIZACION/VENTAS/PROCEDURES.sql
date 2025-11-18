@@ -128,6 +128,8 @@ BEGIN
         DET.ESTADO = 1
 		AND
 		(MONTH(V.FECHA) >= min_mes and MONTH(V.FECHA)< max_mes and YEAR(V.FECHA)= yearr)
+        AND
+        (V.ASESOR <> "IMPORT ZEUS")
 		ORDER BY V.FECHA DESC;
 	END IF;
 END $$;

@@ -58,6 +58,7 @@ CREATE VIEW vista_comprobantes_sin_cancelar AS
 					left join lugar as L
 					ON L.ID = V.ID_LUGAR
 					WHERE V.ESTADO = 1 AND P.CANCELADO = "NO" AND (P.ESTADO IS NULL OR P.ESTADO="COMPLETADO")
+                    AND (V.ASESOR <> "IMPORT ZEUS")
 					ORDER BY FECHA DESC
 			), TABLA AS(
 			-- script para unir ambas tablas creadas temporalmente
