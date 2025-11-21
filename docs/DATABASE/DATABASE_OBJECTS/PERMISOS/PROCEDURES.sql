@@ -1,3 +1,4 @@
+use Zeus_Safety_Data_Integration;
 DROP PROCEDURE IF EXISTS subvistas_colaborador;
 DELIMITER $$;
 CREATE PROCEDURE subvistas_colaborador(IN METHOD VARCHAR(30),IN VARIABLE VARCHAR(30))
@@ -166,3 +167,42 @@ INSERT INTO SUB_VISTAS(NOMBRE, ID_AREA) VALUES
 ("GESTION_CLIENTES",1),
 ("LISTADO_VENTAS",1),
 ("STOCK_PRECIOS",1);
+
+################################################################################
+################################################################################
+-- NUEVOS PROCEDIMIENTOS
+################################################################################
+################################################################################
+DROP PROCEDURE IF EXISTS COLABORADORES_LOGIN;
+DELIMITER $$;
+CREATE PROCEDURE COLABORADORES_LOGIN(IN METHOD INT, IN IN_USUARIO VARCHAR(30))
+BEGIN
+	IF METHOD == 1 THEN
+		 SELECT CONTRASEÑA FROM colaboradores WHERE USUARIO = IN_USUARIO AND ESTADO = 1
+    ELSEIF METHOD == 2 THEN
+		SELECT NOW();
+    ELSEIF METHOD == 3 THEN
+		SELECT NOW();
+    END IF
+END
+DELIMITER $$;
+
+                    cursor.execute(sql_contrasena, (usuario,))
+                    get_contrasena = cursor.fetchone()
+
+                    if get_contrasena and contrasena == get_contrasena["CONTRASEÑA"]:
+                        sql_modulos = "CALL PERMISOS('MODULOS_PERMISOS',%s)"
+                        cursor.execute(sql_modulos, (usuario,))
+                        result = cursor.fetchall()
+                    else:
+                        return (json.dumps({"error": "contraseña incorrecta"}), 401, headers);
+
+-- Consulta para obtener los roles de un colaborador                        
+SELECT * FROM ROL;
+SELECT * FROM colaboradores;
+
+SELECT R.NOMBRE FROM ROL AS R
+INNER JOIN colaboradores AS C
+ON C.ID_ROL = R.ID
+WHERE C.USUARIO = "joseph"
+;
