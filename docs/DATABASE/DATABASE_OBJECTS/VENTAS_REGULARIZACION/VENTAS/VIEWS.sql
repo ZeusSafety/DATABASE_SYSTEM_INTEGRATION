@@ -199,3 +199,37 @@ SELECT CLI.cliente, C.TOTAL,CATEGORIA, 50000 as SUB_CATEGORIA FROM CLIENTES_ACTE
   LIMIT 10
 );
 SELECT * FROM clientes_navidad_2025;
+
+DROP VIEW IF EXISTS VENTAS_POWER_BI;
+CREATE VIEW VENTAS_POWER_BI AS
+SELECT C.CLIENTE,V.FECHA, V.CLASIFICACION, V.ASESOR, V.N_COMPROBANTE, R.REGION, DIS.DISTRITO, L.LUGAR AS LUGAR, V.SALIDA_DE_PEDIDO, V.OBSERVACIONES,
+		P.CANCELADO, P.REGULARIZADO, P.ESTADO, P.TIPO_DE_PAGO, P.FECHA_DE_PAGO,
+		DET.CODIGO, DET.PRODUCTO, DET.CANTIDAD, DET.PRECIO_VENTA, DET.TOTAL
+		FROM ventas AS V
+		-- join con pagos
+		inner join pagos as P
+		on V.ID_VENTA = P.ID_VENTA
+		-- join con productos comprados
+		inner join detalle_venta as DET
+		ON V.ID_VENTA = DET.ID_VENTA
+		-- join con clientes
+		inner join cliente as C
+		ON C.ID_CLIENTE = V.ID_CLIENTE
+		-- join con region
+		left join region as R
+		ON R.ID = V.ID_REGION
+		-- join con distrito
+		left join distrito as DIS
+		ON DIS.ID = V.ID_DISTRITO
+        -- join con lugar
+        left join lugar as L
+        ON L.ID = V.ID_LUGAR
+
+		-- filtros
+		WHERE V.ESTADO = 1
+        AND
+        DET.ESTADO = 1
+		ORDER BY V.FECHA DESC;
+        
+SHOW TABLES;
+SELECT * FROM VENTAS_POWER_BI;
