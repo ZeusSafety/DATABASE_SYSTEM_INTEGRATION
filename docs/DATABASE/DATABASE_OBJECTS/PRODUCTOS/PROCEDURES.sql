@@ -195,3 +195,29 @@ CALL crud_productos(0, 'Producto Test', 'PRD999', 'KG', 1);
 CALL crud_productos(5, 'Producto Modificado', 'PRD555', 'UNIDAD', 1);
 
 SHOW CREATE TABLE productos;
+
+
+-- ============================================
+-- PROCEDIMIENTO 5: LISTADO NUEVO
+-- ============================================
+
+DROP PROCEDURE IF EXISTS listar_productos_general;
+
+DELIMITER $$
+CREATE PROCEDURE listar_productos_general()
+BEGIN
+    SELECT 
+        ID,
+        CODIGO,
+        NOMBRE,
+        CATEGORIA,
+        TIPO_PRODUCTO,
+        COLOR_TIPO,
+        TAMAÑO,
+        PARES_POR_CAJA,
+        FICHA_TECNICA_ENLACE
+    FROM productos
+    WHERE ESTADO = 1
+    ORDER BY NOMBRE;
+END$$
+DELIMITER ;
