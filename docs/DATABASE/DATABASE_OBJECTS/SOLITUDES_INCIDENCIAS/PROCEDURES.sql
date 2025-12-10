@@ -1,12 +1,6 @@
--- PROCEDIMIENTOS ALMACENADOS SOLICITUDES/INCIDENCIAS (PARA LISTADOD DE SOLICITUDES POR AREA)
---
--- IMPLEMENTAR MAS RESPUESTAS EN LAS SOLICITUDES
---
-select * from reprogramaciones;
-select * from solicitudes;
-select * from respuestas;
---
---
+/* ============================================================
+   ALTER TABLE: Nuevos campos para requerimientos e informes
+============================================================ */
 ALTER TABLE solicitudes
 ADD REQUERIMIENTO_2 TEXT,
 ADD FECHA_REQUERIMIENTO_2 DATETIME,
@@ -15,11 +9,13 @@ ADD FECHA_INFORME_2 DATETIME,
 ADD REQUERIMIENTO_3 TEXT,
 ADD FECHA_REQUERIMIENTO_3 DATETIME,
 ADD INFORME_3 VARCHAR(255),
-ADD FECHA_INFORME_3 DATETIME
---
--- PROCEDIMIENTO ALMACENADO PARA MAS RESPUESTA A LA SOLICITUD
---
+ADD FECHA_INFORME_3 DATETIME;
+
+---------------------------------------------------------------
+-- PROCEDIMIENTO: ACTUALIZAR REQUERIMIENTOS/INFORMES
+---------------------------------------------------------------
 DELIMITER $$
+
 CREATE PROCEDURE actualizar_requerimientos (
     IN p_id_solicitud INT,
     IN p_requerimiento2 TEXT,
@@ -33,32 +29,28 @@ BEGIN
     DECLARE v_requerimiento3 TEXT;
     DECLARE v_informe3 VARCHAR(255);
 
-    -- Obtener valores actuales
     SELECT REQUERIMIENTO_2, INFORME_2, REQUERIMIENTO_3, INFORME_3
     INTO v_requerimiento2, v_informe2, v_requerimiento3, v_informe3
     FROM solicitudes
     WHERE ID_SOLICITUD = p_id_solicitud;
 
-    -- Actualizar REQUERIMIENTO_2 solo si cambia
-    IF NULLIF(TRIM(p_requerimiento2),'') IS NOT NULL 
-       AND p_requerimiento2 <> IFNULL(v_requerimiento2, '')THEN
+    IF NULLIF(TRIM(p_requerimiento2),'') IS NOT NULL
+       AND p_requerimiento2 <> IFNULL(v_requerimiento2,'') THEN
         UPDATE solicitudes
         SET REQUERIMIENTO_2 = p_requerimiento2,
             FECHA_REQUERIMIENTO_2 = NOW()
         WHERE ID_SOLICITUD = p_id_solicitud;
     END IF;
 
-    -- Actualizar INFORME_2 solo si cambia
-	IF NULLIF(TRIM(p_informe2),'') IS NOT NULL 
-	   AND p_informe2 <> IFNULL(v_informe2,'') THEN
-		UPDATE solicitudes
-		SET INFORME_2 = p_informe2,
-			FECHA_INFORME_2 = NOW()
-	   WHERE ID_SOLICITUD = p_id_solicitud;
-	END IF;
+    IF NULLIF(TRIM(p_informe2),'') IS NOT NULL
+       AND p_informe2 <> IFNULL(v_informe2,'') THEN
+        UPDATE solicitudes
+        SET INFORME_2 = p_informe2,
+            FECHA_INFORME_2 = NOW()
+        WHERE ID_SOLICITUD = p_id_solicitud;
+    END IF;
 
-    -- Actualizar REQUERIMIENTO_3 solo si cambia
-    IF NULLIF(TRIM(p_requerimiento3),'') IS NOT NULL 
+    IF NULLIF(TRIM(p_requerimiento3),'') IS NOT NULL
        AND p_requerimiento3 <> IFNULL(v_requerimiento3,'') THEN
         UPDATE solicitudes
         SET REQUERIMIENTO_3 = p_requerimiento3,
@@ -66,40 +58,24 @@ BEGIN
         WHERE ID_SOLICITUD = p_id_solicitud;
     END IF;
 
-    -- Actualizar INFORME_3 solo si cambia
-    IF NULLIF(TRIM(p_informe3),'') IS NOT NULL 
-     AND p_informe3 <> IFNULL(v_informe3,'') THEN
-      UPDATE solicitudes
-       SET INFORME_3 = p_informe3,
-         FECHA_INFORME_3 = NOW()
-       WHERE ID_SOLICITUD = p_id_solicitud;
+    IF NULLIF(TRIM(p_informe3),'') IS NOT NULL
+       AND p_informe3 <> IFNULL(v_informe3,'') THEN
+        UPDATE solicitudes
+        SET INFORME_3 = p_informe3,
+            FECHA_INFORME_3 = NOW()
+        WHERE ID_SOLICITUD = p_id_solicitud;
     END IF;
+
 END$$
+
 DELIMITER ;
---
--- PRUBEA DEL SP actualizar_requerimiento
---
-CALL actualizar_requerimientos(
-    254,                          -- ID_SOLICITUD
-    'GAAAA',  -- REQUERIMIENTO_2
-    '',                         -- INFORME_2 (no se actualiza)
-    'XD',    -- REQUERIMIENTO_3
-    ''            -- INFORME_3
-);
---
---
---
-select * from solicitudes;
 
-CALL sp_listado_solicitudes_respuestas_administracion;
-CALL sp_listado_solicitudes_respuestas;
-
-SHOW procedure status
---
---
---
+---------------------------------------------------------------
+-- PROTOTIPO BASE PARA LISTADOS (REUTILIZADO EN TODOS LOS SP)
+---------------------------------------------------------------
 DELIMITER $$
-CREATE PROCEDURE sp_listado_solicitudes_respuestas()
+
+CREATE PROCEDURE sp_listado_solicitudes_respuestas_base (IN p_area VARCHAR(100))
 BEGIN
     SELECT
         s.ID_SOLICITUD,
@@ -110,7 +86,6 @@ BEGIN
         s.RES_INCIDENCIA,
         s.REQUERIMIENTOS,
         s.INFORME AS INFORME_SOLICITUD,
-        -- Nuevos campos de solicitudes
         s.REQUERIMIENTO_2,
         s.FECHA_REQUERIMIENTO_2,
         s.REQUERIMIENTO_3,
@@ -119,7 +94,6 @@ BEGIN
         s.FECHA_INFORME_2,
         s.INFORME_3,
         s.FECHA_INFORME_3,
-        -- Campos originales
         s.AREA_RECEPCION,
         r.ID_RESPUESTA,
         r.FECHA_RESPUESTA,
@@ -127,7 +101,6 @@ BEGIN
         r.RESPUESTA AS RESPUESTA_R,
         r.INFORME AS INFORME_RESPUESTA,
         s.ESTADO,
-        /* Agrupa las reprogramaciones en un array JSON */
         (
             SELECT JSON_ARRAYAGG(
                 JSON_OBJECT(
@@ -144,503 +117,136 @@ BEGIN
         ) AS REPROGRAMACIONES
     FROM solicitudes s
     LEFT JOIN respuestas r ON s.ID_SOLICITUD = r.ID_SOLICITUD
+    WHERE (p_area IS NULL OR s.AREA_RECEPCION = p_area)
     ORDER BY s.FECHA_CONSULTA DESC;
 END$$
+
 DELIMITER ;
---
-CALL sp_listado_solicitudes_respuestas();
---
+
+---------------------------------------------------------------
+-- SP PRINCIPAL (SIN FILTRO)
+---------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE sp_listado_solicitudes_respuestas()
+BEGIN
+    CALL sp_listado_solicitudes_respuestas_base(NULL);
+END$$
+
+DELIMITER ;
+
+---------------------------------------------------------------
+-- SP POR ÁREA RECEPCIÓN
+---------------------------------------------------------------
+
+/* SISTEMAS */
 DELIMITER $$
 CREATE PROCEDURE sp_listado_solicitudes_respuestas_sistemas()
 BEGIN
-    SELECT
-        s.ID_SOLICITUD,
-        s.FECHA_CONSULTA,
-        s.REGISTRADO_POR,
-        s.NUMERO_SOLICITUD,
-        s.AREA,
-        s.RES_INCIDENCIA,
-        s.REQUERIMIENTOS,
-        s.INFORME AS INFORME_SOLICITUD,
-		-- Nuevos campos de solicitudes
-        s.REQUERIMIENTO_2,
-        s.FECHA_REQUERIMIENTO_2,
-        s.REQUERIMIENTO_3,
-        s.FECHA_REQUERIMIENTO_3,
-        s.INFORME_2,
-        s.FECHA_INFORME_2,
-        s.INFORME_3,
-        s.FECHA_INFORME_3,
-		--
-        s.AREA_RECEPCION,
-        r.ID_RESPUESTA,
-        r.FECHA_RESPUESTA,
-        r.RESPONDIDO_POR,
-        r.RESPUESTA AS RESPUESTA_R,
-        r.INFORME AS INFORME_RESPUESTA,
-        s.ESTADO,
-        -- Agrupa las reprogramaciones en un array JSON
-        (
-            SELECT JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'ID_REPROGRAMACION', rp.ID_REPROGRAMACION,
-                    'FECHA_REPROGRAMACION', rp.FECHA_REPROGRAMACION,
-                    'RESPUESTA_REPROG', rp.RESPUESTA,
-                    'FH_RESPUESTA', rp.FH_RESPUESTA,
-                    'INFORME_REPROG', rp.INFORME,
-                    'FH_INFORME', rp.FH_INFORME
-                )
-            )
-            FROM reprogramaciones rp
-            WHERE rp.ID_RESPUESTA = r.ID_RESPUESTA
-        ) AS REPROGRAMACIONES
-    FROM solicitudes s
-    LEFT JOIN respuestas r ON s.ID_SOLICITUD = r.ID_SOLICITUD
-    WHERE s.AREA_RECEPCION = 'SISTEMAS'
-    ORDER BY s.FECHA_CONSULTA DESC;
+    CALL sp_listado_solicitudes_respuestas_base('SISTEMAS');
 END$$
 DELIMITER ;
-select * from SUB_VISTAS;
---
-CALL sp_listado_solicitudes_respuestas_sistemas()
---
--- ADMIN VENTAS
---
+
+/* VENTAS */
 DELIMITER $$
 CREATE PROCEDURE sp_listado_solicitudes_respuestas_ventas()
 BEGIN
-    SELECT
-        s.ID_SOLICITUD,
-        s.FECHA_CONSULTA,
-        s.REGISTRADO_POR,
-        s.NUMERO_SOLICITUD,
-        s.AREA,
-        s.RES_INCIDENCIA,
-        s.REQUERIMIENTOS,
-        s.INFORME AS INFORME_SOLICITUD,
-		-- Nuevos campos de solicitudes
-        s.REQUERIMIENTO_2,
-        s.FECHA_REQUERIMIENTO_2,
-        s.REQUERIMIENTO_3,
-        s.FECHA_REQUERIMIENTO_3,
-        s.INFORME_2,
-        s.FECHA_INFORME_2,
-        s.INFORME_3,
-        s.FECHA_INFORME_3,
-		--
-        s.AREA_RECEPCION,
-        r.ID_RESPUESTA,
-        r.FECHA_RESPUESTA,
-        r.RESPONDIDO_POR,
-        r.RESPUESTA AS RESPUESTA_R,
-        r.INFORME AS INFORME_RESPUESTA,
-        s.ESTADO,
-        -- Agrupa las reprogramaciones en un array JSON
-        (
-            SELECT JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'ID_REPROGRAMACION', rp.ID_REPROGRAMACION,
-                    'FECHA_REPROGRAMACION', rp.FECHA_REPROGRAMACION,
-                    'RESPUESTA_REPROG', rp.RESPUESTA,
-                    'FH_RESPUESTA', rp.FH_RESPUESTA,
-                    'INFORME_REPROG', rp.INFORME,
-                    'FH_INFORME', rp.FH_INFORME
-                )
-            )
-            FROM reprogramaciones rp
-            WHERE rp.ID_RESPUESTA = r.ID_RESPUESTA
-        ) AS REPROGRAMACIONES
-    FROM solicitudes s
-    LEFT JOIN respuestas r ON s.ID_SOLICITUD = r.ID_SOLICITUD
-    WHERE s.AREA_RECEPCION = 'VENTAS'
-    ORDER BY s.FECHA_CONSULTA DESC;
+    CALL sp_listado_solicitudes_respuestas_base('VENTAS');
 END$$
 DELIMITER ;
---
-CALL sp_listado_solicitudes_respuestas_ventas();
---
--- ADMIN RECURSOS HUMANOS
---
+
+/* RRHH */
 DELIMITER $$
 CREATE PROCEDURE sp_listado_solicitudes_respuestas_rrhh()
 BEGIN
-    SELECT
-        s.ID_SOLICITUD,
-        s.FECHA_CONSULTA,
-        s.REGISTRADO_POR,
-        s.NUMERO_SOLICITUD,
-        s.AREA,
-        s.RES_INCIDENCIA,
-        s.REQUERIMIENTOS,
-        s.INFORME AS INFORME_SOLICITUD,
-		-- Nuevos campos de solicitudes
-        s.REQUERIMIENTO_2,
-        s.FECHA_REQUERIMIENTO_2,
-        s.REQUERIMIENTO_3,
-        s.FECHA_REQUERIMIENTO_3,
-        s.INFORME_2,
-        s.FECHA_INFORME_2,
-        s.INFORME_3,
-        s.FECHA_INFORME_3,
-		--
-        s.AREA_RECEPCION,
-        r.ID_RESPUESTA,
-        r.FECHA_RESPUESTA,
-        r.RESPONDIDO_POR,
-        r.RESPUESTA AS RESPUESTA_R,
-        r.INFORME AS INFORME_RESPUESTA,
-        s.ESTADO,
-        -- Agrupa las reprogramaciones en un array JSON
-        (
-            SELECT JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'ID_REPROGRAMACION', rp.ID_REPROGRAMACION,
-                    'FECHA_REPROGRAMACION', rp.FECHA_REPROGRAMACION,
-                    'RESPUESTA_REPROG', rp.RESPUESTA,
-                    'FH_RESPUESTA', rp.FH_RESPUESTA,
-                    'INFORME_REPROG', rp.INFORME,
-                    'FH_INFORME', rp.FH_INFORME
-                )
-            )
-            FROM reprogramaciones rp
-            WHERE rp.ID_RESPUESTA = r.ID_RESPUESTA
-        ) AS REPROGRAMACIONES
-    FROM solicitudes s
-    LEFT JOIN respuestas r ON s.ID_SOLICITUD = r.ID_SOLICITUD
-    WHERE s.AREA_RECEPCION = 'RECURSOS HUMANOS'
-    ORDER BY s.FECHA_CONSULTA DESC;
+    CALL sp_listado_solicitudes_respuestas_base('RRHH');
 END$$
 DELIMITER ;
---
-CALL sp_listado_solicitudes_respuestas_rrhh();
---
--- ADMIN MARKETING
---
+
+/* MARKETING */
 DELIMITER $$
 CREATE PROCEDURE sp_listado_solicitudes_respuestas_marketing()
 BEGIN
-    SELECT
-        s.ID_SOLICITUD,
-        s.FECHA_CONSULTA,
-        s.REGISTRADO_POR,
-        s.NUMERO_SOLICITUD,
-        s.AREA,
-        s.RES_INCIDENCIA,
-        s.REQUERIMIENTOS,
-        s.INFORME AS INFORME_SOLICITUD,
-		-- Nuevos campos de solicitudes
-        s.REQUERIMIENTO_2,
-        s.FECHA_REQUERIMIENTO_2,
-        s.REQUERIMIENTO_3,
-        s.FECHA_REQUERIMIENTO_3,
-        s.INFORME_2,
-        s.FECHA_INFORME_2,
-        s.INFORME_3,
-        s.FECHA_INFORME_3,
-		--
-        s.AREA_RECEPCION,
-        r.ID_RESPUESTA,
-        r.FECHA_RESPUESTA,
-        r.RESPONDIDO_POR,
-        r.RESPUESTA AS RESPUESTA_R,
-        r.INFORME AS INFORME_RESPUESTA,
-        s.ESTADO,
-        -- Agrupa las reprogramaciones en un array JSON
-        (
-            SELECT JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'ID_REPROGRAMACION', rp.ID_REPROGRAMACION,
-                    'FECHA_REPROGRAMACION', rp.FECHA_REPROGRAMACION,
-                    'RESPUESTA_REPROG', rp.RESPUESTA,
-                    'FH_RESPUESTA', rp.FH_RESPUESTA,
-                    'INFORME_REPROG', rp.INFORME,
-                    'FH_INFORME', rp.FH_INFORME
-                )
-            )
-            FROM reprogramaciones rp
-            WHERE rp.ID_RESPUESTA = r.ID_RESPUESTA
-        ) AS REPROGRAMACIONES
-    FROM solicitudes s
-    LEFT JOIN respuestas r ON s.ID_SOLICITUD = r.ID_SOLICITUD
-    WHERE s.AREA_RECEPCION = 'MARKETING'
-    ORDER BY s.FECHA_CONSULTA DESC;
+    CALL sp_listado_solicitudes_respuestas_base('MARKETING');
 END$$
 DELIMITER ;
---
-CALL sp_listado_solicitudes_respuestas_marketing();
---
--- LOGISTICA
---
+
+/* LOGISTICA */
 DELIMITER $$
 CREATE PROCEDURE sp_listado_solicitudes_respuestas_logistica()
 BEGIN
-    SELECT
-        s.ID_SOLICITUD,
-        s.FECHA_CONSULTA,
-        s.REGISTRADO_POR,
-        s.NUMERO_SOLICITUD,
-        s.AREA,
-        s.RES_INCIDENCIA,
-        s.REQUERIMIENTOS,
-        s.INFORME AS INFORME_SOLICITUD,
-		-- Nuevos campos de solicitudes
-        s.REQUERIMIENTO_2,
-        s.FECHA_REQUERIMIENTO_2,
-        s.REQUERIMIENTO_3,
-        s.FECHA_REQUERIMIENTO_3,
-        s.INFORME_2,
-        s.FECHA_INFORME_2,
-        s.INFORME_3,
-        s.FECHA_INFORME_3,
-		--
-        s.AREA_RECEPCION,
-        r.ID_RESPUESTA,
-        r.FECHA_RESPUESTA,
-        r.RESPONDIDO_POR,
-        r.RESPUESTA AS RESPUESTA_R,
-        r.INFORME AS INFORME_RESPUESTA,
-        s.ESTADO,
-        -- Agrupa las reprogramaciones en un array JSON
-        (
-            SELECT JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'ID_REPROGRAMACION', rp.ID_REPROGRAMACION,
-                    'FECHA_REPROGRAMACION', rp.FECHA_REPROGRAMACION,
-                    'RESPUESTA_REPROG', rp.RESPUESTA,
-                    'FH_RESPUESTA', rp.FH_RESPUESTA,
-                    'INFORME_REPROG', rp.INFORME,
-                    'FH_INFORME', rp.FH_INFORME
-                )
-            )
-            FROM reprogramaciones rp
-            WHERE rp.ID_RESPUESTA = r.ID_RESPUESTA
-        ) AS REPROGRAMACIONES
-    FROM solicitudes s
-    LEFT JOIN respuestas r ON s.ID_SOLICITUD = r.ID_SOLICITUD
-    WHERE s.AREA_RECEPCION = 'LOGISTICA'
-    ORDER BY s.FECHA_CONSULTA DESC;
+    CALL sp_listado_solicitudes_respuestas_base('LOGISTICA');
 END$$
 DELIMITER ;
---
-CALL sp_listado_solicitudes_respuestas_logistica();
---
--- ADMIN IMPORTACION
---
+
+/* IMPORTACION */
 DELIMITER $$
 CREATE PROCEDURE sp_listado_solicitudes_respuestas_importacion()
 BEGIN
-    SELECT
-        s.ID_SOLICITUD,
-        s.FECHA_CONSULTA,
-        s.REGISTRADO_POR,
-        s.NUMERO_SOLICITUD,
-        s.AREA,
-        s.RES_INCIDENCIA,
-        s.REQUERIMIENTOS,
-        s.INFORME AS INFORME_SOLICITUD,
-		-- Nuevos campos de solicitudes
-        s.REQUERIMIENTO_2,
-        s.FECHA_REQUERIMIENTO_2,
-        s.REQUERIMIENTO_3,
-        s.FECHA_REQUERIMIENTO_3,
-        s.INFORME_2,
-        s.FECHA_INFORME_2,
-        s.INFORME_3,
-        s.FECHA_INFORME_3,
-		--
-        s.AREA_RECEPCION,
-        r.ID_RESPUESTA,
-        r.FECHA_RESPUESTA,
-        r.RESPONDIDO_POR,
-        r.RESPUESTA AS RESPUESTA_R,
-        r.INFORME AS INFORME_RESPUESTA,
-        s.ESTADO,
-        -- Agrupa las reprogramaciones en un array JSON
-        (
-            SELECT JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'ID_REPROGRAMACION', rp.ID_REPROGRAMACION,
-                    'FECHA_REPROGRAMACION', rp.FECHA_REPROGRAMACION,
-                    'RESPUESTA_REPROG', rp.RESPUESTA,
-                    'FH_RESPUESTA', rp.FH_RESPUESTA,
-                    'INFORME_REPROG', rp.INFORME,
-                    'FH_INFORME', rp.FH_INFORME
-                )
-            )
-            FROM reprogramaciones rp
-            WHERE rp.ID_RESPUESTA = r.ID_RESPUESTA
-        ) AS REPROGRAMACIONES
-    FROM solicitudes s
-    LEFT JOIN respuestas r ON s.ID_SOLICITUD = r.ID_SOLICITUD
-    WHERE s.AREA_RECEPCION = 'IMPORTACION'
-    ORDER BY s.FECHA_CONSULTA DESC;
+    CALL sp_listado_solicitudes_respuestas_base('IMPORTACION');
 END$$
 DELIMITER ;
---
-CALL sp_listado_solicitudes_respuestas_importacion();
---
--- ADMIN GERENCIA
---
+
+/* EXPORTACION */
 DELIMITER $$
-CREATE PROCEDURE sp_listado_solicitudes_respuestas_gerencia()
+CREATE PROCEDURE sp_listado_solicitudes_respuestas_exportacion()
 BEGIN
-    SELECT
-        s.ID_SOLICITUD,
-        s.FECHA_CONSULTA,
-        s.REGISTRADO_POR,
-        s.NUMERO_SOLICITUD,
-        s.AREA,
-        s.RES_INCIDENCIA,
-        s.REQUERIMIENTOS,
-        s.INFORME AS INFORME_SOLICITUD,
-		-- Nuevos campos de solicitudes
-        s.REQUERIMIENTO_2,
-        s.FECHA_REQUERIMIENTO_2,
-        s.REQUERIMIENTO_3,
-        s.FECHA_REQUERIMIENTO_3,
-        s.INFORME_2,
-        s.FECHA_INFORME_2,
-        s.INFORME_3,
-        s.FECHA_INFORME_3,
-		--
-        s.AREA_RECEPCION,
-        r.ID_RESPUESTA,
-        r.FECHA_RESPUESTA,
-        r.RESPONDIDO_POR,
-        r.RESPUESTA AS RESPUESTA_R,
-        r.INFORME AS INFORME_RESPUESTA,
-        s.ESTADO,
-        -- Agrupa las reprogramaciones en un array JSON
-        (
-            SELECT JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'ID_REPROGRAMACION', rp.ID_REPROGRAMACION,
-                    'FECHA_REPROGRAMACION', rp.FECHA_REPROGRAMACION,
-                    'RESPUESTA_REPROG', rp.RESPUESTA,
-                    'FH_RESPUESTA', rp.FH_RESPUESTA,
-                    'INFORME_REPROG', rp.INFORME,
-                    'FH_INFORME', rp.FH_INFORME
-                )
-            )
-            FROM reprogramaciones rp
-            WHERE rp.ID_RESPUESTA = r.ID_RESPUESTA
-        ) AS REPROGRAMACIONES
-    FROM solicitudes s
-    LEFT JOIN respuestas r ON s.ID_SOLICITUD = r.ID_SOLICITUD
-    WHERE s.AREA_RECEPCION = 'GERENCIA'
-    ORDER BY s.FECHA_CONSULTA DESC;
+    CALL sp_listado_solicitudes_respuestas_base('EXPORTACION');
 END$$
 DELIMITER ;
---
-CALL sp_listado_solicitudes_respuestas_gerencia();
---
--- ADMIN FACTURACION
---
+
+/* CONTABILIDAD */
 DELIMITER $$
-CREATE PROCEDURE sp_listado_solicitudes_respuestas_facturacion()
+CREATE PROCEDURE sp_listado_solicitudes_respuestas_contabilidad()
 BEGIN
-    SELECT
-        s.ID_SOLICITUD,
-        s.FECHA_CONSULTA,
-        s.REGISTRADO_POR,
-        s.NUMERO_SOLICITUD,
-        s.AREA,
-        s.RES_INCIDENCIA,
-        s.REQUERIMIENTOS,
-        s.INFORME AS INFORME_SOLICITUD,
-		-- Nuevos campos de solicitudes
-        s.REQUERIMIENTO_2,
-        s.FECHA_REQUERIMIENTO_2,
-        s.REQUERIMIENTO_3,
-        s.FECHA_REQUERIMIENTO_3,
-        s.INFORME_2,
-        s.FECHA_INFORME_2,
-        s.INFORME_3,
-        s.FECHA_INFORME_3,
-		--
-        s.AREA_RECEPCION,
-        r.ID_RESPUESTA,
-        r.FECHA_RESPUESTA,
-        r.RESPONDIDO_POR,
-        r.RESPUESTA AS RESPUESTA_R,
-        r.INFORME AS INFORME_RESPUESTA,
-        s.ESTADO,
-        -- Agrupa las reprogramaciones en un array JSON
-        (
-            SELECT JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'ID_REPROGRAMACION', rp.ID_REPROGRAMACION,
-                    'FECHA_REPROGRAMACION', rp.FECHA_REPROGRAMACION,
-                    'RESPUESTA_REPROG', rp.RESPUESTA,
-                    'FH_RESPUESTA', rp.FH_RESPUESTA,
-                    'INFORME_REPROG', rp.INFORME,
-                    'FH_INFORME', rp.FH_INFORME
-                )
-            )
-            FROM reprogramaciones rp
-            WHERE rp.ID_RESPUESTA = r.ID_RESPUESTA
-        ) AS REPROGRAMACIONES
-    FROM solicitudes s
-    LEFT JOIN respuestas r ON s.ID_SOLICITUD = r.ID_SOLICITUD
-    WHERE s.AREA_RECEPCION = 'FACTURACION'
-    ORDER BY s.FECHA_CONSULTA DESC;
+    CALL sp_listado_solicitudes_respuestas_base('CONTABILIDAD');
 END$$
 DELIMITER ;
---
-CALL sp_listado_solicitudes_respuestas_facturacion();
---
--- ADMIN ADMINISTRACION 
---
+
+/* ATENCION AL CLIENTE */
 DELIMITER $$
-CREATE PROCEDURE sp_listado_solicitudes_respuestas_administracion()
+CREATE PROCEDURE sp_listado_solicitudes_respuestas_atencion()
 BEGIN
-    SELECT
-        s.ID_SOLICITUD,
-        s.FECHA_CONSULTA,
-        s.REGISTRADO_POR,
-        s.NUMERO_SOLICITUD,
-        s.AREA,
-        s.RES_INCIDENCIA,
-        s.REQUERIMIENTOS,
-        s.INFORME AS INFORME_SOLICITUD,
-		-- Nuevos campos de solicitudes
-        s.REQUERIMIENTO_2,
-        s.FECHA_REQUERIMIENTO_2,
-        s.REQUERIMIENTO_3,
-        s.FECHA_REQUERIMIENTO_3,
-        s.INFORME_2,
-        s.FECHA_INFORME_2,
-        s.INFORME_3,
-        s.FECHA_INFORME_3,
-		--
-        s.AREA_RECEPCION,
-        r.ID_RESPUESTA,
-        r.FECHA_RESPUESTA,
-        r.RESPONDIDO_POR,
-        r.RESPUESTA AS RESPUESTA_R,
-        r.INFORME AS INFORME_RESPUESTA,
-        s.ESTADO,
-        -- Agrupa las reprogramaciones en un array JSON
-        (
-            SELECT JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'ID_REPROGRAMACION', rp.ID_REPROGRAMACION,
-                    'FECHA_REPROGRAMACION', rp.FECHA_REPROGRAMACION,
-                    'RESPUESTA_REPROG', rp.RESPUESTA,
-                    'FH_RESPUESTA', rp.FH_RESPUESTA,
-                    'INFORME_REPROG', rp.INFORME,
-                    'FH_INFORME', rp.FH_INFORME
-                )
-            )
-            FROM reprogramaciones rp
-            WHERE rp.ID_RESPUESTA = r.ID_RESPUESTA
-        ) AS REPROGRAMACIONES
-    FROM solicitudes s
-    LEFT JOIN respuestas r ON s.ID_SOLICITUD = r.ID_SOLICITUD
-    WHERE s.AREA_RECEPCION = 'ADMINISTRACION'
-    ORDER BY s.FECHA_CONSULTA DESC;
+    CALL sp_listado_solicitudes_respuestas_base('ATENCION AL CLIENTE');
 END$$
 DELIMITER ;
---
-CALL sp_listado_solicitudes_respuestas_administracion();
---
+
+/* PRODUCCION */
+DELIMITER $$
+CREATE PROCEDURE sp_listado_solicitudes_respuestas_produccion()
+BEGIN
+    CALL sp_listado_solicitudes_respuestas_base('PRODUCCION');
+END$$
+DELIMITER ;
+
+/* CALIDAD */
+DELIMITER $$
+CREATE PROCEDURE sp_listado_solicitudes_respuestas_calidad()
+BEGIN
+    CALL sp_listado_solicitudes_respuestas_base('CALIDAD');
+END$$
+DELIMITER ;
+
+/* MANTENIMIENTO */
+DELIMITER $$
+CREATE PROCEDURE sp_listado_solicitudes_respuestas_mantenimiento()
+BEGIN
+    CALL sp_listado_solicitudes_respuestas_base('MANTENIMIENTO');
+END$$
+DELIMITER ;
+
+/* SEGURIDAD INDUSTRIAL */
+DELIMITER $$
+CREATE PROCEDURE sp_listado_solicitudes_respuestas_seguridad()
+BEGIN
+    CALL sp_listado_solicitudes_respuestas_base('SEGURIDAD INDUSTRIAL');
+END$$
+DELIMITER ;
+
+/* OTROS */
+DELIMITER $$
+CREATE PROCEDURE sp_listado_solicitudes_respuestas_otros()
+BEGIN
+    CALL sp_listado_solicitudes_respuestas_base('OTROS');
+END$$
+DELIMITER ;
