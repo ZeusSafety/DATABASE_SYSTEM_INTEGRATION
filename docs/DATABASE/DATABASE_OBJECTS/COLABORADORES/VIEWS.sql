@@ -28,3 +28,6 @@ ORDER BY C.ID_PERSONA ASC;
 
 SELECT * FROM DATOS_CLIENTES_RECURSOS_HUMANOS;
 select * from colaboradores;
+
+select * from productos;
+SELECT DISTINCT(TIPO_PRODUCTO) FROM productos;
