@@ -8,7 +8,7 @@ BEGIN
         INNER JOIN colaboradores as C
         ON C.ID_PERSONA = A.ID_COLABORADOR
         WHERE C.ESTADO IN (1,0) -- 2 para usuarios de prueba
-        ORDER BY A.ID ASC
+        ORDER BY A.FECHA_HORA DESC
         LIMIT 60
         -- WHERE MONTH(A.FECHA_HORA) = MONTH(NOW)
         ;
