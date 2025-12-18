@@ -59,3 +59,87 @@ ON C.ID_PERSONA = ID_COLABORADOR
 WHERE C.ESTADO = 1
 GROUP BY C.NOMBRE
 LIMIT 10;
+
+INNER JOIN MEDIOS_COMUNICACION AS M
+OC.ID_PERSONA = ID_COLABORADOR
+WHERE C.ESTADO = 1
+GROUP BY C.NOMBRE
+LIMIT 10;
+<<<<<<< Updated upstream
+LIMIT 10;
+=======
+LIMIT 10;
+
+SHOW PROCEDURE STATUS;
+
+-- 1. PROCEDIMIENTO: Obtener medios de comunicación de un colaborador
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS sp_obtener_medios_comunicacion(
+    IN p_id_persona INT
+)
+BEGIN
+    SELECT 
+        ID,
+        ID_COLABORADOR,
+        NOMBRE,
+        MEDIO,
+        TIPO,
+        CONTENIDO,
+        ESTADO
+    FROM MEDIOS_COMUNICACION
+    WHERE ID_COLABORADOR = p_id_persona
+      AND ESTADO = TRUE
+    ORDER BY MEDIO, ID;
+END //
+DELIMITER ;
+
+-- 2. PROCEDIMIENTO: Actualizar medios de comunicación
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS sp_actualizar_medios_comunicacion(
+    IN p_id_persona INT,
+    IN p_medios JSON
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    START TRANSACTION;
+    
+    -- Desactivar todos los medios existentes del colaborador
+    UPDATE MEDIOS_COMUNICACION
+    SET ESTADO = FALSE
+    WHERE ID_COLABORADOR = p_id_persona;
+    
+    -- Insertar los nuevos medios
+    INSERT INTO MEDIOS_COMUNICACION (
+        ID_COLABORADOR,
+        NOMBRE,
+        MEDIO,
+        TIPO,
+        CONTENIDO,
+        ESTADO
+    )
+    SELECT 
+        p_id_persona,
+        NULLIF(JSON_UNQUOTE(JSON_EXTRACT(medio_item.value, '$.NOMBRE')), '') AS NOMBRE,
+        JSON_UNQUOTE(JSON_EXTRACT(medio_item.value, '$.MEDIO')) AS MEDIO,
+        JSON_UNQUOTE(JSON_EXTRACT(medio_item.value, '$.TIPO')) AS TIPO,
+        JSON_UNQUOTE(JSON_EXTRACT(medio_item.value, '$.CONTENIDO')) AS CONTENIDO,
+        TRUE AS ESTADO
+    FROM JSON_TABLE(
+        p_medios,
+        '$[*]' COLUMNS (
+            value JSON PATH '$'
+        )
+    ) AS medio_item;
+    
+    COMMIT;
+END //
+DELIMITER ;
+
+-- 3. VERIFICAR QUE SE CREARON CORRECTAMENTE
+SHOW PROCEDURE STATUS WHERE Db = DATABASE() AND Name LIKE 'sp_%medios%';
+>>>>>>> Stashed changes
