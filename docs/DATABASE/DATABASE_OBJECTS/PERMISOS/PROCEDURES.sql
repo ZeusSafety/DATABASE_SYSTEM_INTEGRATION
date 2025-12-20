@@ -95,9 +95,8 @@ BEGIN
 	END IF;
 END $$
 DELIMITER ;
-
 CALL PERMISOS('MODULOS_PERMISOS','hervinzeus');
-CALL PERMISOS('SUBVISTAS','joseph')
+CALL PERMISOS('SUBVISTAS','joseph');
 -- crear un trigger al momento de insertar un colaborador
 ########################
 -- UNIR IDS DE COLABORADORES
