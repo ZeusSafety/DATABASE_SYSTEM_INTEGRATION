@@ -25,21 +25,33 @@ SELECT V.ID_CLIENTE, V.ID_VENTA, C.CLIENTE,V.FECHA, V.CLASIFICACION, V.ASESOR, V
         left join lugar as L
         ON V.ID_LUGAR = L.ID
 		WHERE V.ESTADO = 1;
-        
+
+select * from detalle_venta ORDER BY ID_DETALLE DESC limit 20;
+select * from ventas where N_COMPROBANTE = "B 876";
+select * from detalle_venta WHERE N_COMPROBANTE = "B 876";
+select * from detalle_venta WHERE ID_VENTA = "3971";
+
+SET SQL_SAFE_UPDATES = 0;
+UPDATE detalle_venta SET N_COMPROBANTE = "B 873" WHERE ID_DETALLE in (10655,10656);
+SET SQL_SAFE_UPDATES = 1;
+
 DROP VIEW IF EXISTS vista_comprobantes_sin_cancelar;
 CREATE VIEW vista_comprobantes_sin_cancelar AS
 -- LISTADO DE FACTURAS SIN PAGAR
 			-- script para obtener los pagos totales de los comprobantes válidos y no eliminados
 			-- eliminar el limit y order by
 			WITH ABONADO AS (
-			  SELECT SUM(DET.MONTO) AS MONTO,DET.COMPROBANTES
+			  SELECT SUM(DET.MONTO) AS MONTO, RTRIM(DET.COMPROBANTES) AS COMPROBANTES
 			  FROM detalle_regularizacion DET
 			  WHERE ESTADO = 1 AND VALIDACION = "VALIDO"
-			  GROUP BY DET.COMPROBANTES
+			  GROUP BY RTRIM(DET.COMPROBANTES)
 			),MONTO_TOTAL AS(
-        SELECT N_COMPROBANTE, SUM(TOTAL) as MONTO_TOTAL FROM detalle_venta
-        WHERE ESTADO = 1
-        GROUP BY N_COMPROBANTE
+        SELECT RTRIM(V.N_COMPROBANTE) AS N_COMPROBANTE, SUM(D.TOTAL) as MONTO_TOTAL 
+        FROM detalle_venta AS D
+        INNER JOIN ventas AS V
+        ON D.ID_VENTA = V.ID_VENTA
+        WHERE D.ESTADO = 1
+        GROUP BY RTRIM(V.N_COMPROBANTE)
       ),
 			VENTAS AS (
 			SELECT V.ID_VENTA, C.CLIENTE,V.FECHA, V.ASESOR, V.N_COMPROBANTE, R.REGION, 
@@ -57,7 +69,8 @@ CREATE VIEW vista_comprobantes_sin_cancelar AS
 					-- join con lugar
 					left join lugar as L
 					ON L.ID = V.ID_LUGAR
-					WHERE V.ESTADO = 1 AND P.CANCELADO = "NO" AND (P.ESTADO IS NULL OR P.ESTADO="COMPLETADO")
+					WHERE V.ESTADO = 1 AND P.CANCELADO = "NO" AND (P.ESTADO IS NULL OR P.ESTADO="COMPLETADO" OR P.ESTADO="PENDIENTE")
+                    AND V.ASESOR !="IMPORT ZEUS"
 					ORDER BY FECHA DESC
 			), TABLA AS(
 			-- script para unir ambas tablas creadas temporalmente
@@ -74,8 +87,6 @@ CREATE VIEW vista_comprobantes_sin_cancelar AS
       SELECT ID_VENTA,FECHA,  ASESOR ,REGION, LUGAR, CONDICION_PAGO, N_COMPROBANTE, 
       CLIENTE,MONTO_TOTAL, TOTAL_ABONADO, (MONTO_TOTAL-TOTAL_ABONADO) as POR_ABONAR
       FROM TABLA;
-
-
 ########################
 -- CAMPAÑA NAVIDEÑA
 ########################
@@ -122,7 +133,7 @@ UNION ALL
   WHERE TOTAL < 50000
   ORDER BY TOTAL DESC
   LIMIT 10
-)
+);
 
 SELECT * FROM clientes_navidad_2025;
 SET @ID = 2;
@@ -232,3 +243,57 @@ SELECT C.CLIENTE,V.FECHA, V.CLASIFICACION, V.ASESOR, V.N_COMPROBANTE, R.REGION, 
 		ORDER BY V.FECHA DESC;
         
 SHOW TABLES;
+
+
+
+CREATE VIEW vista_comprobantes_sin_cancelar AS
+SELECT 
+    V.ID_VENTA,
+    V.FECHA,
+    V.ASESOR,
+    V.REGION,
+    V.LUGAR,
+    V.CONDICION_PAGO,
+    V.N_COMPROBANTE,
+    V.CLIENTE,
+    M.MONTO_TOTAL,
+    A.MONTO AS TOTAL_ABONADO,
+    (M.MONTO_TOTAL - IFNULL(A.MONTO, 0)) AS POR_ABONAR
+FROM (
+    SELECT 
+        V.ID_VENTA,
+        C.CLIENTE,
+        V.FECHA,
+        V.ASESOR,
+        V.N_COMPROBANTE,
+        R.REGION,
+        L.LUGAR,
+        P.CANCELADO,
+        P.ESTADO,
+        P.TIPO_DE_PAGO AS CONDICION_PAGO
+    FROM ventas V
+    INNER JOIN cliente C ON V.ID_CLIENTE = C.ID_CLIENTE
+    LEFT JOIN region R ON R.ID = V.ID_REGION
+    LEFT JOIN pagos P ON P.ID_VENTA = V.ID_VENTA
+    LEFT JOIN lugar L ON L.ID = V.ID_LUGAR
+    WHERE V.ESTADO = 1
+      AND P.CANCELADO = "NO"
+      AND (P.ESTADO IS NULL OR P.ESTADO = "COMPLETADO")
+) V
+LEFT JOIN (
+    SELECT 
+        RTRIM(DET.COMPROBANTES) AS COMPROBANTES,
+        SUM(DET.MONTO) AS MONTO
+    FROM detalle_regularizacion DET
+    WHERE DET.ESTADO = 1
+      AND DET.VALIDACION = "VALIDO"
+    GROUP BY DET.COMPROBANTES
+) A ON V.N_COMPROBANTE = A.COMPROBANTES
+LEFT JOIN (
+    SELECT 
+        RTRIM(N_COMPROBANTE) AS N_COMPROBANTE,
+        SUM(TOTAL) AS MONTO_TOTAL
+    FROM detalle_venta
+    WHERE ESTADO = 1
+    GROUP BY N_COMPROBANTE
+) M ON M.N_COMPROBANTE = V.N_COMPROBANTE;
