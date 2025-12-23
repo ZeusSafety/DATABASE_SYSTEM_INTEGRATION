@@ -22,15 +22,15 @@ BEGIN
         INNER JOIN colaboradores C 
             ON C.ID_PERSONA = A.ID_COLABORADOR
         WHERE C.ESTADO IN (1,0)
-          AND C.ID_PERSONA = P_ID_GENERAL
+          AND C.USUARIO = P_ID_GENERAL
         ORDER BY A.FECHA_HORA DESC
         LIMIT P_LIMIT OFFSET P_OFFSET;
     END IF;
 END$$
 DELIMITER ;
 
-CALL AUDITORIA_LOGIN_SP('LOGIN_USUARIO', 1, 60, 0);
-CALL AUDITORIA_LOGIN_SP('LOGIN', 1, 250, 0);
+CALL AUDITORIA_LOGIN_SP('LOGIN_USUARIO', "hervinzeus", 60, 0);
+CALL AUDITORIA_LOGIN_SP('LOGIN', "random", 250, 0);
 
 SELECT * from colaboradores order by id_persona limit 5 offset 0;
 SELECT * from colaboradores order by id_persona limit 10 offset 10;

@@ -97,6 +97,7 @@ END $$
 DELIMITER ;
 CALL PERMISOS('MODULOS_PERMISOS','hervinzeus');
 CALL PERMISOS('SUBVISTAS','joseph');
+CALL PERMISOS('SUB_VISTAS','random');
 -- crear un trigger al momento de insertar un colaborador
 ########################
 -- UNIR IDS DE COLABORADORES
@@ -115,7 +116,9 @@ BEGIN
 			INSERT INTO SUB_VISTAS_COLABORADORES(ID_COLABORADOR, ID_SUB_VISTAS) VALUES (IN_ID_COLABORADOR, IN_ID_SUB_VISTA);
 		END IF;
     ELSEIF METHOD = "ELIMINAR_SUB_VISTA" THEN
+		SET SQL_SAFE_UPDATES = 0;
 		DELETE FROM SUB_VISTAS_COLABORADORES WHERE ID_COLABORADOR = IN_ID_COLABORADOR AND ID = IN_ID_SUB_VISTA;
+        SET SQL_SAFE_UPDATES = 1;
     END IF;
 END $$;
 DELIMITER ;
@@ -159,6 +162,6 @@ WHERE C.USUARIO = "joseph"
 ;
 
 select * from colaboradores ORDER BY ID_PERSONA DESC limit 20;
-INSERT INTO colaboradores(NOMBRE, APELLIDO, AREA_PRINCIPAL, USUARIO, CONTRASEÑA)
-VALUES ("usuario administrador","sin apellido", 1, "adminprueba1","admin123456");
-UPDATE colaboradores
+INSERT INTO colaboradores(USUARIO, CONTRASEÑA2)
+VALUES ("pablo","pablo123");
+select * from colaboradores where nombre like "%eli%";
