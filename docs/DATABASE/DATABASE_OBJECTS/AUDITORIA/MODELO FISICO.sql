@@ -12,3 +12,9 @@ SELECT * FROM AUDITORIA_LOGIN;
 
 CREATE INDEX idx_auditoria_usuario_fecha
 ON AUDITORIA_LOGIN (ID_COLABORADOR, FECHA_HORA);
+
+###############################################
+-- Auditoria de Cambio de contraseña
+CREATE TABLE IF NOT EXISTS AUDITORIA_PASSWORDS(
+	ID INT PRIMARY KEY AUTO_INCREMENT
+);
