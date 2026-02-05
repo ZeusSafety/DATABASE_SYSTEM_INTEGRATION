@@ -1,296 +1,327 @@
-use Zeus_Safety_Data_Integration;
-####################################################
-CREATE TABLE IF NOT EXISTS SIMULACION_PROFORMAS(
-ID INT PRIMARY KEY AUTO_INCREMENT,
-FECHA_REGISTRO TIMESTAMP,
-ID_ASESOR INT REFERENCES colaboradores(ID_PERSONA),
-ID_REGISTRADO_POR VARCHAR(50), -- REFERENCES colaboradores(ID_PERSONA),
-ALMACEN INT REFERENCES ALMACENES(ID),
-N_PROFORMA VARCHAR(20) NOT NULL UNIQUE,
-ARCHIVO_URL VARCHAR(255),
-ESTADO CHAR(1) DEFAULT 1
-);
+-- ============================================================================
+-- STORED PROCEDURES PARA INVENTARIO
+-- ============================================================================
 
-CREATE TABLE SIMULACION_PROFORMAS_DETALLE(
-ID INT PRIMARY KEY AUTO_INCREMENT,
-ID_SIMULACION_PROFORMA INT REFERENCES SIMULACION_PROFORMA(ID),
-ID_PRODUCTO INT REFERENCES PRODUCTOS(ID),
-UNIDAD_MEDIDA VARCHAR(25),
-CANTIDAD INT NOT NULL,
-ESTADO CHAR(1) DEFAULT 1
-);
--- #########################################################
--- #########################################################
-DROP PROCEDURE IF EXISTS COLABORADORES_PERMISOS;
-DELIMITER $$;
-CREATE PROCEDURE COLABORADORES_PERMISOS(IN METHOD VARCHAR(50))
+-- 
+-- SP: Asignar nuevo inventario
+-- 
+DELIMITER //
+CREATE PROCEDURE sp_asignar_inventario(
+    IN p_numero_inventario VARCHAR(50),
+    IN p_contrasena VARCHAR(255),
+    IN p_area VARCHAR(100),
+    IN p_autorizado_por VARCHAR(150),
+    OUT p_resultado INT,
+    OUT p_mensaje VARCHAR(255)
+)
 BEGIN
-	IF METHOD = "VISTA_INVENTARIO" THEN
-		SELECT ID_PERSONA, NOMBRE 
-        from colaboradores WHERE ID_ROL = 1;
-	ELSEIF METHOD = "VISTA_CONTEO_INVENTARIO" THEN
-		SELECT ID_PERSONA, NOMBRE FROM VISTA_PERMISOS_COLABORADORES
-        WHERE ID_ROL in (1,2,3)
-        AND AREA = "LOGISTICA";
-	ELSEIF METHOD ="COLABORADORES_COMBO_AUDITORIA" THEN
-		SELECT ID_PERSONA, NOMBRE FROM VISTA_PERMISOS_COLABORADORES
-        WHERE ID_ROL in (1,2,3)
-        AND AREA = "LOGISTICA" OR AREA = "ADMINISTRACION";
-	ELSEIF METHOD = "TIENDAS_MALVINAS" then
-		SELECT ID, NOMBRE FROM TIENDAS_VISTA
-        WHERE TIPO = "TIENDA" AND ALMACEN = "MALVINAS";
-	ELSEIF METHOD = "INVENTARIOS_GENERAL_REPORTE" THEN
-		SELECT ID,  F.FECHA_REGISTRO, F.NOMBRE, ESTADO_INVENTARIO, FECHA_REGISTRO_ESTADO, FECHA_CULMINACION
-		FROM INVENTARIO AS F
-		ORDER BY FECHA_REGISTRO DESC
-		LIMIT 20;
-	ELSEIF METHOD = "INVENTARIOS_GENERAL_SEGUIMIENTO" THEN
-		SELECT F.ID, F.FECHA_REGISTRO,
-		F.NOMBRE AS NOMBRE_INVENTARIO,
-		C.NOMBRE AS AUTORIZADO_POR,
-		F.ESTADO_INVENTARIO,
-		JSON_ARRAYAGG(JSON_OBJECT("pdf", L.LINK_ARCHIVO_PDF)) AS INFORME,
-		F.FECHA_REGISTRO_ESTADO,
-		F.RESPUESTA,
-		F.FECHA_RESPUESTA
-	FROM INVENTARIO AS F
-	INNER JOIN colaboradores AS C
-		ON F.AUTORIZADO_POR = C.ID_PERSONA
-	INNER JOIN LISTADO_CONTEOS AS L
-		ON F.ID = L.ID_INVENTARIO
-	GROUP BY 
-		F.ID, F.FECHA_REGISTRO, F.NOMBRE, C.NOMBRE, F.ESTADO_INVENTARIO, F.FECHA_REGISTRO_ESTADO,F.RESPUESTA, F.FECHA_RESPUESTA
-	ORDER BY F.FECHA_REGISTRO DESC
-	LIMIT 20;
-	END IF;
-END $$;
-DELIMITER ;
-CALL COLABORADORES_PERMISOS("COLABORADORES_COMBO_AUDITORIA");
--- #########################################################
--- #########################################################
-DROP PROCEDURE IF EXISTS EXTRACCION_INVENTARIO;
-DELIMITER $$;
-CREATE PROCEDURE EXTRACCION_INVENTARIO(IN METHOD VARCHAR(50), IN VARIABLE VARCHAR(20))
-BEGIN
+    DECLARE v_existe INT DEFAULT 0;
+    DECLARE v_activo INT DEFAULT 0;
     
-	IF METhOD = "LISTAR_INVENTARIOS" THEN
-		SELECT ID, NOMBRE FROM INVENTARIO ORDER BY FECHA_REGISTRO DESC LIMIT 10;
-    ELSEIF METHOD = "LISTAR_INVENTARIOS_CONTEOS" THEN
-        SELECT ID, FECHA_INICIO, FECHA_FINAL, NOMBRE AS INVENTARIO, REGISTRADO_POR AS NOMBRE, LINK_ARCHIVO_PDF, FECHA_FINAL, PUNTO_OPERACION
-        FROM LISTADO_CONTEOS_VISTA
-		WHERE ALMACEN = VARIABLE
-        ORDER BY L.FECHA_FINAL DESC
-        LIMIT 8;
-    ELSEIF METHOD = "LISTAR_CONTEO_PUNTO_OPERACION" THEN
-		SET @Inventario := (substring_index(VARIABLE,'-',1));
-		SET @Almacen := (substring_index(VARIABLE,'-',-1));
-		-- Get Json type data
-		WITH PUNTOS AS (
-			  SELECT PUNTO_OPERACION FROM LISTADO_CONTEOS_VISTA 
-			  WHERE ALMACEN = @Almacen AND NOMBRE = @Inventario
-			)
-			SELECT 
-			  L.NOMBRE,P.ID,P.CODIGO, P.NOMBRE AS PRODUCTO, SUM(DET.CANTIDAD) AS TOTAL, DET.UNIDAD_MEDIDA
-			FROM LISTADO_CONTEOS_DETALLE AS DET
-			INNER JOIN productos AS P
-			  ON P.ID = DET.ID_PRODUCTOS
-			INNER JOIN LISTADO_CONTEOS_VISTA AS L
-			  ON L.ID = DET.ID_LISTADO_CONTEOS
-			WHERE DET.ESTADO = 1
-			  AND L.NOMBRE = @Inventario
-			  AND L.PUNTO_OPERACION IN (SELECT PUNTO_OPERACION FROM PUNTOS)
-			  AND L.ALMACEN = @Almacen
-			GROUP BY L.NOMBRE, P.ID, P.NOMBRE, DET.UNIDAD_MEDIDA
-			ORDER BY P.NOMBRE ASC;
-	ELSEIF METHOD = "AUDITORIA_CONTEOS" THEN
-		SET time_zone = "America/Lima";
-		WITH PUNTOS AS(
-		  SELECT ID,NOMBRE FROM PUNTO_OPERACION
-		)
-		SELECT AD.ID_INVENTARIO,AD.ID, PT.NOMBRE,AD.FECHA_REGISTRO, AD.CANTIDAD,AD.TIPO_ERROR, P.NOMBRE, AD.MOTIVO, R.NOMBRE AS REGISTRADO_POR, C.NOMBRE AS ERROR_DE, AD.OBSERVACIONES
-			FROM AUDITORIA_COMPARACION AS AD
-				INNER JOIN productos as P
-				ON AD.ID_PRODUCTO = P.ID
-				INNER JOIN colaboradores as R
-				ON AD.REGISTRADO_POR_ID = R.ID_PERSONA
-				INNER JOIN colaboradores as C
-				ON AD.ERROR_ID = C.ID_PERSONA
-
-        INNER JOIN PUNTOS AS PT
-        ON PT.ID = AD.ID_PUNTO_OPERACION
-			WHERE AD.ID_INVENTARIO = VARIABLE
-			ORDER BY FECHA_REGISTRO ASC;
-	ELSEIF METHOD= "INVENTARIO_EXCEL" THEN
-			SET @ID_INVENTARIO := substring_index(VARIABLE,"-",1);
-			SET @ID_ALMACEN := substring_index(VARIABLE, "-",-1);
-
-			SELECT SK.ID, SK.ID_INVENTARIO, SK.TIPO_ALMACEN, DET.PRODUCTO, DET.CODIGO, DET.CANTIDAD, DET.ESTADO
-			FROM STOCK_SISTEMA AS SK
-			INNER JOIN STOCK_SISTEMA_DETALLE AS DET
-			ON SK.ID = DET.ID_STOCK_SISTEMA
-			WHERE SK.ESTADO = 1 AND SK.ID_INVENTARIO = @ID_INVENTARIO AND SK.TIPO_ALMACEN = @ID_ALMACEN
-			AND DET.ESTADO = (SELECT MAX(DET.ESTADO) FROM STOCK_SISTEMA_DETALLE AS DET
-							  INNER JOIN STOCK_SISTEMA AS SK
-							  on DET.ID_STOCK_SISTEMA = SK.ID
-							  WHERE SK.ID_INVENTARIO = @ID_INVENTARIO AND SK.TIPO_ALMACEN = @ID_ALMACEN
-							  AND SK.ESTADO = 1)
-			ORDER BY PRODUCTO ASC;
+    -- Verificar si existe un inventario activo
+    SELECT COUNT(*) INTO v_activo 
+    FROM inventarios 
+    WHERE estado = 'activo';
+    
+    IF v_activo > 0 THEN
+        SET p_resultado = 0;
+        SET p_mensaje = 'Ya existe un inventario activo. Debe cerrarlo antes de crear uno nuevo.';
+    ELSE
+        -- Verificar si el número de inventario ya existe
+        SELECT COUNT(*) INTO v_existe 
+        FROM inventarios 
+        WHERE numero_inventario = p_numero_inventario;
+        
+        IF v_existe > 0 THEN
+            SET p_resultado = 0;
+            SET p_mensaje = 'El número de inventario ya existe.';
+        ELSE
+            -- Insertar nuevo inventario
+            INSERT INTO inventarios (numero_inventario, contrasena, area, autorizado_por)
+            VALUES (p_numero_inventario, p_contrasena, p_area, p_autorizado_por);
+            
+            SET p_resultado = LAST_INSERT_ID();
+            SET p_mensaje = 'Inventario asignado correctamente.';
+        END IF;
     END IF;
-END $$;
-DELIMITER ;
-SELECT * FROM LISTADO_CONTEOS_VISTA;
-CALL EXTRACCION_INVENTARIO('LISTAR_INVENTARIOS','3');
-CALL EXTRACCION_INVENTARIO('INVENTARIO_EXCEL','3-1');
-CALL EXTRACCION_INVENTARIO('AUDITORIA_CONTEOS','3');
-CALL EXTRACCION_INVENTARIO('LISTAR_CONTEO_PUNTO_OPERACION','OFICIAL-CALLAO');
-SELECT substring_index('inven 01-TIENDA 3133','-', 1);
-SELECT substring_index('1-2','-', 1);
--- #########################################################
--- #########################################################
-SET @Inventario := 'inven 01';
-SET @Almacen := 'CALLAO';
-  
-WITH PUNTOS AS (
-  SELECT PUNTO_OPERACION FROM LISTADO_CONTEOS_VISTA 
-  WHERE ALMACEN = @Almacen AND NOMBRE = @Inventario
-)
-SELECT 
-  L.NOMBRE,P.ID, P.NOMBRE AS PRODUCTO, SUM(DET.CANTIDAD) AS TOTAL, DET.UNIDAD_MEDIDA
-FROM LISTADO_CONTEOS_DETALLE AS DET
-INNER JOIN productos AS P
-  ON P.ID = DET.ID_PRODUCTOS
-INNER JOIN LISTADO_CONTEOS_VISTA AS L
-  ON L.ID = DET.ID_LISTADO_CONTEOS
-WHERE DET.ESTADO = 1
-  AND L.NOMBRE = @Inventario
-  AND L.PUNTO_OPERACION IN (SELECT PUNTO_OPERACION FROM PUNTOS)
-  AND L.ALMACEN = @Almacen
-GROUP BY 
-  L.NOMBRE,
-  P.ID,
-  P.NOMBRE, 
-  DET.UNIDAD_MEDIDA
-ORDER BY P.NOMBRE ASC;
-SELECT * FROM LISTADO_CONTEOS_VISTA;
+END//
 
-#######################################
-DROP PROCEDURE IF EXISTS INSERT_JSON_INVENTARIO;
-DELIMITER $$;
-CREATE PROCEDURE INSERT_JSON_INVENTARIO(IN METHOD VARCHAR(30), IN DATOS JSON)
+-- 
+-- SP: Unir colaborador a inventario
+-- 
+DELIMITER //
+CREATE PROCEDURE sp_unir_colaborador_inventario(
+    IN p_numero_inventario VARCHAR(50),
+    IN p_nombre_colaborador VARCHAR(150),
+    IN p_rol VARCHAR(50),
+    OUT p_resultado INT,
+    OUT p_mensaje VARCHAR(255)
+)
 BEGIN
-	SET time_zone = "America/Lima";
-	IF METHOD = "AUDITORIA_COMPARACION" THEN
-		INSERT INTO AUDITORIA_COMPARACION(ID_INVENTARIO, ID_PUNTO_OPERACION,CANTIDAD,FECHA_REGISTRO,TIPO_ERROR, ID_PRODUCTO, MOTIVO, REGISTRADO_POR_ID, ERROR_ID, OBSERVACIONES)
-        VALUES(
-			(SELECT DATOS->>'$.ID_INVENTARIO'),
-            (select DATOS->>'$.ID_PUNTO_OPERACION'),
-            (select DATOS->>'$.CANTIDAD'),
-            (select NOW()),
-            (SELECT DATOS->>'$.TIPO_ERROR'),
-            (SELECT DATOS->>'$.ID_PRODUCTO'),
-            (SELECT DATOS->>'$.MOTIVO'),
-            (SELECT DATOS->>'$.REGISTRADO_POR_ID'),
-            (SELECT DATOS->>'$.ERROR_ID'),
-            (SELECT DATOS->>'$.OBSERVACIONES')
+    DECLARE v_inventario_id INT DEFAULT 0;
+    DECLARE v_estado VARCHAR(20);
+    
+    -- Buscar inventario por número
+    SELECT id, estado INTO v_inventario_id, v_estado
+    FROM inventarios 
+    WHERE numero_inventario = p_numero_inventario;
+    
+    IF v_inventario_id = 0 THEN
+        SET p_resultado = 0;
+        SET p_mensaje = 'No se encontró el inventario con ese número.';
+    ELSEIF v_estado != 'activo' THEN
+        SET p_resultado = 0;
+        SET p_mensaje = 'El inventario no está activo.';
+    ELSE
+        -- Insertar colaborador
+        INSERT INTO colaboradores_inventario (inventario_id, nombre_colaborador, rol)
+        VALUES (v_inventario_id, p_nombre_colaborador, p_rol);
+        
+        SET p_resultado = LAST_INSERT_ID();
+        SET p_mensaje = 'Colaborador unido correctamente al inventario.';
+    END IF;
+END//
+
+-- 
+-- SP: Iniciar conteo
+-- 
+DELIMITER //
+CREATE PROCEDURE sp_iniciar_conteo(
+    IN p_numero_inventario VARCHAR(50),
+    IN p_almacen_id INT,
+    IN p_tienda_id INT,
+    IN p_registrado_por VARCHAR(150),
+    IN p_tipo_conteo ENUM('por_cajas', 'por_stand'),
+    IN p_origen_datos ENUM('sistema', 'excel'),
+    OUT p_resultado INT,
+    OUT p_mensaje VARCHAR(255)
+)
+BEGIN
+    DECLARE v_inventario_id INT DEFAULT 0;
+    DECLARE v_requiere_tienda BOOLEAN DEFAULT FALSE;
+    
+    -- Obtener ID del inventario
+    SELECT id INTO v_inventario_id
+    FROM inventarios 
+    WHERE numero_inventario = p_numero_inventario AND estado = 'activo';
+    
+    IF v_inventario_id = 0 THEN
+        SET p_resultado = 0;
+        SET p_mensaje = 'No se encontró un inventario activo con ese número.';
+    ELSE
+        -- Verificar si el almacén requiere tienda
+        SELECT requiere_tienda INTO v_requiere_tienda
+        FROM almacenes
+        WHERE id = p_almacen_id;
+        
+        -- Validar tienda
+        IF v_requiere_tienda AND p_tienda_id IS NULL THEN
+            SET p_resultado = 0;
+            SET p_mensaje = 'Este almacén requiere seleccionar una tienda.';
+        ELSE
+            -- Insertar conteo
+            INSERT INTO conteos (
+                inventario_id, almacen_id, tienda_id, numero_inventario,
+                registrado_por, tipo_conteo, origen_datos
+            ) VALUES (
+                v_inventario_id, p_almacen_id, p_tienda_id, p_numero_inventario,
+                p_registrado_por, p_tipo_conteo, p_origen_datos
+            );
+            
+            SET p_resultado = LAST_INSERT_ID();
+            SET p_mensaje = 'Conteo iniciado correctamente.';
+        END IF;
+    END IF;
+END//
+
+-- 
+-- SP: Cargar productos iniciales al conteo (desde sistema)
+-- 
+DELIMITER //
+DROP PROCEDURE IF EXISTS sp_cargar_productos_conteo//
+CREATE PROCEDURE sp_cargar_productos_conteo(
+    IN p_conteo_id INT,
+    OUT p_resultado INT,
+    OUT p_mensaje VARCHAR(255)
+)
+BEGIN
+    DECLARE v_registros INT DEFAULT 0;
+    
+    -- Insertar todos los productos activos al detalle del conteo
+    INSERT INTO detalle_conteo (
+        conteo_id, item_producto, producto, codigo, cantidad, unidad_medida
+    )
+    SELECT 
+        p_conteo_id,
+        item,
+        producto,
+        codigo,
+        0, -- Cantidad inicial en 0
+        unidad_medida
+    FROM productos_inventario
+    WHERE estado = 'activo';
+    
+    SET v_registros = ROW_COUNT();
+    SET p_resultado = v_registros;
+    SET p_mensaje = CONCAT('Se cargaron ', v_registros, ' productos al conteo.');
+END//
+
+-- 
+-- SP: Finalizar conteo
+--
+DELIMITER //
+DROP PROCEDURE IF EXISTS sp_finalizar_conteo//
+CREATE PROCEDURE sp_finalizar_conteo(
+    IN p_conteo_id INT,
+    IN p_archivo_pdf VARCHAR(500),
+    OUT p_resultado INT,
+    OUT p_mensaje VARCHAR(255)
+)
+BEGIN
+    DECLARE v_existe INT DEFAULT 0;
+    
+    -- Verificar que el conteo existe
+    SELECT COUNT(*) INTO v_existe
+    FROM conteos
+    WHERE id = p_conteo_id AND estado = 'en_proceso';
+    
+    IF v_existe = 0 THEN
+        SET p_resultado = 0;
+        SET p_mensaje = 'No se encontró el conteo o ya está finalizado.';
+    ELSE
+        -- Actualizar conteo
+        UPDATE conteos
+        SET estado = 'finalizado',
+            fecha_hora_final = CURRENT_TIMESTAMP,
+            archivo_pdf = p_archivo_pdf
+        WHERE id = p_conteo_id;
+        
+        SET p_resultado = 1;
+        SET p_mensaje = 'Conteo finalizado correctamente.';
+    END IF;
+END//
+
+-- 
+-- SP: Actualizar cantidad de producto (individual)
+--
+DELIMITER //
+DROP PROCEDURE IF EXISTS sp_actualizar_cantidad_producto//
+CREATE PROCEDURE sp_actualizar_cantidad_producto(
+    IN p_detalle_id INT,
+    IN p_nueva_cantidad DECIMAL(15,3),
+    IN p_usuario VARCHAR(150),
+    OUT p_resultado INT,
+    OUT p_mensaje VARCHAR(255)
+)
+BEGIN
+    DECLARE v_cantidad_anterior DECIMAL(15,3);
+    DECLARE v_conteo_id INT;
+    
+    -- Obtener cantidad anterior
+    SELECT cantidad, conteo_id INTO v_cantidad_anterior, v_conteo_id
+    FROM detalle_conteo
+    WHERE id = p_detalle_id;
+    
+    IF v_conteo_id IS NULL THEN
+        SET p_resultado = 0;
+        SET p_mensaje = 'No se encontró el detalle del conteo.';
+    ELSE
+        -- Actualizar cantidad
+        UPDATE detalle_conteo
+        SET cantidad = p_nueva_cantidad,
+            usuario_modificacion = p_usuario
+        WHERE id = p_detalle_id;
+        
+        -- Registrar auditoría
+        INSERT INTO auditoria_cambios (
+            detalle_conteo_id, conteo_id, campo_modificado, 
+            valor_anterior, valor_nuevo, tipo_modificacion, usuario
+        ) VALUES (
+            p_detalle_id, v_conteo_id, 'cantidad',
+            CAST(v_cantidad_anterior AS CHAR), CAST(p_nueva_cantidad AS CHAR),
+            'individual', p_usuario
         );
-	ELSEIF METHOD = "INSERTAR_INVENTARIO" THEN
-		INSERT INTO INVENTARIO(NOMBRE, AREA, AUTORIZADO_POR, FECHA_REGISTRO)
-		VALUES (
-        (DATOS ->>'$.NOMBRE'), 
-        (DATOS ->>'$.AREA'), 
-        (DATOS ->>'$.AUTORIZADO_POR'),
-        NOW());
-    ELSEIF METHOD = "ACTUALIZAR_ESTADO_INVENTARIO" THEN
-        UPDATE INVENTARIO SET ESTADO_INVENTARIO = "",
-        FECHA_REGISTRO_ESTADO = NOW()
-        WHERE ID = "";
+        
+        SET p_resultado = 1;
+        SET p_mensaje = 'Cantidad actualizada correctamente.';
     END IF;
-END $$;
-DELIMITER ;
+END//
 
-
-CALL INSERT_JSON_INVENTARIO('AUDITORIA_COMPARACION',
-'{
-    "ID_INVENTARIO": "3",
-    "ID_PUNTO_OPERACION": "2",
-    "CANTIDAD": "44",
-    "TIPO_ERROR": "SISTEMA",
-    "ID_PRODUCTO": "1",
-    "MOTIVO": "CONTEO MANUAL",
-    "REGISTRADO_POR_ID": "4",
-    "ERROR_ID": "1",
-    "OBSERVACIONES": "no se que poner"
-}');
-SELECT * FROM AUDITORIA_COMPARACION;
-TRUNCATE TABLE AUDITORIA_COMPARACION;
-SET SQL_SAFE_UPDATES = 0;
-
-WITH CONTEO_BASE AS (
-SET @Inventario := 'OFICIAL';
-SET @Almacen := 'CALLAO';
-		-- Get Json type data
-		WITH PUNTOS AS (
-			  SELECT PUNTO_OPERACION FROM LISTADO_CONTEOS_VISTA 
-			  WHERE ALMACEN = @Almacen AND NOMBRE = @Inventario
-			)
-			SELECT 
-			  L.NOMBRE,P.ID,P.CODIGO, P.NOMBRE AS PRODUCTO, SUM(DET.CANTIDAD) AS TOTAL, DET.UNIDAD_MEDIDA
-			FROM LISTADO_CONTEOS_DETALLE AS DET
-			INNER JOIN productos AS P
-			  ON P.ID = DET.ID_PRODUCTOS
-			INNER JOIN LISTADO_CONTEOS_VISTA AS L
-			  ON L.ID = DET.ID_LISTADO_CONTEOS
-			WHERE DET.ESTADO = 1
-			  AND L.NOMBRE = @Inventario
-			  AND L.PUNTO_OPERACION IN (SELECT PUNTO_OPERACION FROM PUNTOS)
-			  AND L.ALMACEN = @Almacen
-			GROUP BY L.NOMBRE, P.ID, P.NOMBRE, DET.UNIDAD_MEDIDA
-			ORDER BY P.NOMBRE ASC;
+-- 
+-- SP: Obtener inventario activo
+--
+DELIMITER //
+CREATE PROCEDURE sp_obtener_inventario_activo(
+    OUT p_inventario_id INT,
+    OUT p_numero_inventario VARCHAR(50)
 )
-SELECT * FROM CONTEO_BASE AS CB
-
-SELECT * FROM LISTADO_CONTEOS_VISTA;
-CALL EXTRACCION_INVENTARIO('AUDITORIA_CONTEOS','3');
-############################################
-############################################
-DROP PROCEDURE IF EXISTS ACTUALIZAR_STOCK_SISTEMA;
-DELIMITER $$;
-CREATE PROCEDURE ACTUALIZAR_STOCK_SISTEMA(IN NEW_ID_INVENTARIO INT,IN NEW_TIPO_ALMACEN INT)
 BEGIN
-		DECLARE ID_EXCLUYENTE INT;
-        SELECT MAX(ID) INTO ID_EXCLUYENTE FROM STOCK_SISTEMA
-        WHERE ID_INVENTARIO = NEW_ID_INVENTARIO
-        AND TIPO_ALMACEN = NEW_TIPO_ALMACEN;
-	-- Actualizamos el anterior excel de datos 
-        UPDATE STOCK_SISTEMA SET ESTADO = 0
-        WHERE ID_INVENTARIO = NEW_ID_INVENTARIO
-		AND TIPO_ALMACEN = NEW_TIPO_ALMACEN
-        AND ID <> ID_EXCLUYENTE
-        AND ESTADO = 1;
-END $$;
-DELIMITER ;
-CALL ACTUALIZAR_STOCK_SISTEMA(3,2);
+    SELECT id, numero_inventario 
+    INTO p_inventario_id, p_numero_inventario
+    FROM inventarios
+    WHERE estado = 'activo'
+    LIMIT 1;
+END//
 
-INSERT INTO STOCK_SISTEMA(ID_INVENTARIO, TIPO_ALMACEN)
-VALUES (3, 2);
-SET @id_stock := LAST_INSERT_ID();
-INSERT INTO STOCK_SISTEMA_DETALLE(ID_STOCK_SISTEMA, CANTIDAD, PRODUCTO, CODIGO)
-VALUES (@id_stock, 31, 'PAN', 'PAPAPA'),
-(@id_stock, 21, 'QUESO', 'QUEQUEQUE');
+-- 
+-- SP: Obtener datos desde el excel
+--
+DELIMITER //
+CREATE PROCEDURE sp_cargar_conteo_desde_excel (
+    IN p_conteo_id INT,
+    IN p_usuario VARCHAR(150),
+    OUT p_registros_procesados INT,
+    OUT p_registros_actualizados INT
+)
+BEGIN
+    DECLARE v_estado VARCHAR(20);
 
--- #########################################################
--- #########################################################
-SET @ID_INVENTARIO := 3;
-SET @ID_ALMACEN := 2;
+    -- 1️ Validar conteo
+    SELECT estado INTO v_estado
+    FROM conteos
+    WHERE id = p_conteo_id;
 
-SELECT SK.ID, SK.ID_INVENTARIO, SK.TIPO_ALMACEN, DET.PRODUCTO, DET.CODIGO, DET.CANTIDAD, DET.ESTADO
-FROM STOCK_SISTEMA AS SK
-INNER JOIN STOCK_SISTEMA_DETALLE AS DET
-ON SK.ID = DET.ID_STOCK_SISTEMA
-WHERE SK.ESTADO = 1 AND SK.ID_INVENTARIO = @ID_INVENTARIO AND SK.TIPO_ALMACEN = @ID_ALMACEN
-AND DET.ESTADO = (SELECT MAX(DET.ESTADO) FROM STOCK_SISTEMA_DETALLE AS DET
-                  INNER JOIN STOCK_SISTEMA AS SK
-                  on DET.ID_STOCK_SISTEMA = SK.ID
-                  WHERE SK.ID_INVENTARIO = @ID_INVENTARIO AND SK.TIPO_ALMACEN = @ID_ALMACEN
-                  AND SK.ESTADO = 1)
-ORDER BY PRODUCTO ASC;............................................000000000
+    IF v_estado IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'El conteo no existe';
+    END IF;
+
+    IF v_estado <> 'en_proceso' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'El conteo no está en proceso';
+    END IF;
+
+    -- 2️ Total de registros procesados
+    SELECT COUNT(*) INTO p_registros_procesados
+    FROM tmp_excel_conteo;
+
+    -- 3️ Actualizar detalle_conteo desde Excel
+    UPDATE detalle_conteo dc
+    INNER JOIN tmp_excel_conteo te
+        ON dc.codigo = te.codigo
+    INNER JOIN mapeo_unidades_excel mu
+        ON mu.codigo_excel = te.unidad_excel
+       AND mu.activo = TRUE
+    SET
+        dc.cantidad = te.cantidad,
+        dc.unidad_medida = mu.unidad_sistema,
+        dc.usuario_modificacion = p_usuario,
+        dc.fecha_hora_modificacion = CURRENT_TIMESTAMP
+    WHERE dc.conteo_id = p_conteo_id;
+
+    -- 4️ Registros realmente actualizados
+    SET p_registros_actualizados = ROW_COUNT();
+
+    -- 5️ Registrar la carga
+    INSERT INTO archivos_excel_cargados (
+        conteo_id,
+        registros_procesados,
+        registros_insertados,
+        observaciones
+    ) VALUES (
+        p_conteo_id,
+        p_registros_procesados,
+        p_registros_actualizados,
+        CONCAT('Carga desde Excel por ', p_usuario)
+    );
+END//
