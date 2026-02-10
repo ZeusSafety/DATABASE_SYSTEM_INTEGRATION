@@ -325,3 +325,286 @@ BEGIN
         CONCAT('Carga desde Excel por ', p_usuario)
     );
 END//
+
+--
+-- ============================================================================
+-- STORED PROCEDURES PARA INVENTARIO (MODULO COMPARACIÓN)
+-- ============================================================================
+--
+
+-- 
+-- SP: Cargar datos del sistema desde Excel (Callao)
+-- 
+DELIMITER //
+CREATE PROCEDURE sp_cargar_sistema_callao(
+    IN p_inventario_id INT,
+    IN p_usuario VARCHAR(100),
+    IN p_archivo VARCHAR(255),
+    OUT p_registros_procesados INT,
+    OUT p_mensaje VARCHAR(500)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET p_mensaje = 'Error al cargar datos del sistema';
+        SET p_registros_procesados = 0;
+    END;
+    
+    START TRANSACTION;
+    
+    -- Nota: Los datos deben ser insertados previamente en una tabla temporal
+    -- desde Python después de procesar el Excel
+    
+    -- Contar registros procesados
+    SELECT COUNT(*) INTO p_registros_procesados
+    FROM datos_sistema_callao
+    WHERE inventario_id = p_inventario_id;
+    
+    SET p_mensaje = CONCAT('Se cargaron ', p_registros_procesados, ' productos del sistema');
+    
+    COMMIT;
+END //
+DELIMITER ;
+
+-- 
+-- SP: Generar comparación automática (Callao)
+-- 
+DELIMITER //
+CREATE PROCEDURE sp_generar_comparacion_callao(
+    IN p_inventario_id INT,
+    OUT p_registros_procesados INT,
+    OUT p_mensaje VARCHAR(500)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET p_mensaje = 'Error al generar comparación';
+        SET p_registros_procesados = 0;
+    END;
+    
+    START TRANSACTION;
+    
+    -- Limpiar comparaciones anteriores para este inventario
+    DELETE FROM comparaciones_callao WHERE inventario_id = p_inventario_id;
+    
+    -- Generar comparaciones
+    INSERT INTO comparaciones_callao (
+        inventario_id,
+        producto_item,
+        producto,
+        codigo,
+        cantidad_sistema,
+        cantidad_fisica,
+        resultado,
+        estado,
+        unidad_medida
+    )
+    SELECT 
+        ds.inventario_id,
+        ds.producto_item,
+        ds.producto,
+        ds.codigo,
+        COALESCE(ds.cantidad_sistema, 0) as cantidad_sistema,
+        COALESCE(
+            (SELECT SUM(dc.cantidad) 
+             FROM detalle_conteo_callao dc
+             JOIN conteos_callao cc ON dc.conteo_id = cc.id
+             WHERE cc.inventario_id = p_inventario_id 
+             AND dc.codigo = ds.codigo
+             AND cc.estado = 'finalizado'),
+            0
+        ) as cantidad_fisica,
+        COALESCE(
+            (SELECT SUM(dc.cantidad) 
+             FROM detalle_conteo_callao dc
+             JOIN conteos_callao cc ON dc.conteo_id = cc.id
+             WHERE cc.inventario_id = p_inventario_id 
+             AND dc.codigo = ds.codigo
+             AND cc.estado = 'finalizado'),
+            0
+        ) - COALESCE(ds.cantidad_sistema, 0) as resultado,
+        CASE
+            WHEN COALESCE(
+                (SELECT SUM(dc.cantidad) 
+                 FROM detalle_conteo_callao dc
+                 JOIN conteos_callao cc ON dc.conteo_id = cc.id
+                 WHERE cc.inventario_id = p_inventario_id 
+                 AND dc.codigo = ds.codigo
+                 AND cc.estado = 'finalizado'),
+                0
+            ) = COALESCE(ds.cantidad_sistema, 0) THEN 'CONFORME'
+            WHEN COALESCE(
+                (SELECT SUM(dc.cantidad) 
+                 FROM detalle_conteo_callao dc
+                 JOIN conteos_callao cc ON dc.conteo_id = cc.id
+                 WHERE cc.inventario_id = p_inventario_id 
+                 AND dc.codigo = ds.codigo
+                 AND cc.estado = 'finalizado'),
+                0
+            ) > COALESCE(ds.cantidad_sistema, 0) THEN 'SOBRANTE'
+            ELSE 'FALTANTE'
+        END as estado,
+        ds.unidad_medida
+    FROM datos_sistema_callao ds
+    WHERE ds.inventario_id = p_inventario_id
+    AND ds.estado = 'activo';
+    
+    SET p_registros_procesados = ROW_COUNT();
+    SET p_mensaje = CONCAT('Comparación generada: ', p_registros_procesados, ' productos procesados');
+    
+    COMMIT;
+END //
+DELIMITER ;
+
+--
+-- SP: Generar comparación automática (Malvinas)
+-- 
+DELIMITER //
+CREATE PROCEDURE sp_generar_comparacion_malvinas(
+    IN p_inventario_id INT,
+    OUT p_registros_procesados INT,
+    OUT p_mensaje VARCHAR(500)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET p_mensaje = 'Error al generar comparación';
+        SET p_registros_procesados = 0;
+    END;
+    
+    START TRANSACTION;
+    
+    -- Limpiar comparaciones anteriores para este inventario
+    DELETE FROM comparaciones_malvinas WHERE inventario_id = p_inventario_id;
+    
+    -- Generar comparaciones
+    INSERT INTO comparaciones_malvinas (
+        inventario_id,
+        producto_item,
+        producto,
+        codigo,
+        cantidad_sistema,
+        cantidad_fisica,
+        resultado,
+        estado,
+        unidad_medida
+    )
+    SELECT 
+        ds.inventario_id,
+        ds.producto_item,
+        ds.producto,
+        ds.codigo,
+        COALESCE(ds.cantidad_sistema, 0) as cantidad_sistema,
+        COALESCE(
+            (SELECT SUM(dm.cantidad) 
+             FROM detalle_conteo_malvinas dm
+             JOIN conteos_malvinas cm ON dm.conteo_id = cm.id
+             WHERE cm.inventario_id = p_inventario_id 
+             AND dm.codigo = ds.codigo
+             AND cm.estado = 'finalizado'),
+            0
+        ) as cantidad_fisica,
+        COALESCE(
+            (SELECT SUM(dm.cantidad) 
+             FROM detalle_conteo_malvinas dm
+             JOIN conteos_malvinas cm ON dm.conteo_id = cm.id
+             WHERE cm.inventario_id = p_inventario_id 
+             AND dm.codigo = ds.codigo
+             AND cm.estado = 'finalizado'),
+            0
+        ) - COALESCE(ds.cantidad_sistema, 0) as resultado,
+        CASE
+            WHEN COALESCE(
+                (SELECT SUM(dm.cantidad) 
+                 FROM detalle_conteo_malvinas dm
+                 JOIN conteos_malvinas cm ON dm.conteo_id = cm.id
+                 WHERE cm.inventario_id = p_inventario_id 
+                 AND dm.codigo = ds.codigo
+                 AND cm.estado = 'finalizado'),
+                0
+            ) = COALESCE(ds.cantidad_sistema, 0) THEN 'CONFORME'
+            WHEN COALESCE(
+                (SELECT SUM(dm.cantidad) 
+                 FROM detalle_conteo_malvinas dm
+                 JOIN conteos_malvinas cm ON dm.conteo_id = cm.id
+                 WHERE cm.inventario_id = p_inventario_id 
+                 AND dm.codigo = ds.codigo
+                 AND cm.estado = 'finalizado'),
+                0
+            ) > COALESCE(ds.cantidad_sistema, 0) THEN 'SOBRANTE'
+            ELSE 'FALTANTE'
+        END as estado,
+        ds.unidad_medida
+    FROM datos_sistema_malvinas ds
+    WHERE ds.inventario_id = p_inventario_id
+    AND ds.estado = 'activo';
+    
+    SET p_registros_procesados = ROW_COUNT();
+    SET p_mensaje = CONCAT('Comparación generada: ', p_registros_procesados, ' productos procesados');
+    
+    COMMIT;
+END //
+DELIMITER ;
+
+-- 
+-- SP: Calcular estado de verificación
+-- 
+DELIMITER //
+CREATE PROCEDURE sp_calcular_estado_verificacion(
+    IN p_stock_existencia DECIMAL(10,2),
+    IN p_stock_fisico DECIMAL(10,2),
+    IN p_stock_sistema DECIMAL(10,2),
+    OUT p_estado VARCHAR(50),
+    OUT p_mensaje TEXT
+)
+BEGIN
+    -- Caso 1: Stock existencia coincide con físico pero no con sistema
+    IF p_stock_existencia = p_stock_fisico AND p_stock_existencia != p_stock_sistema THEN
+        SET p_estado = 'ERROR_SISTEMA';
+        SET p_mensaje = 'El sistema está mal, pero el conteo físico es correcto';
+        
+    -- Caso 2: Stock existencia coincide con sistema pero no con físico
+    ELSEIF p_stock_existencia = p_stock_sistema AND p_stock_existencia != p_stock_fisico THEN
+        SET p_estado = 'ERROR_LOGISTICA';
+        SET p_mensaje = 'El sistema refleja bien, pero el conteo físico no coincide';
+        
+    -- Caso 3: Stock existencia no coincide con ninguno
+    ELSEIF p_stock_existencia != p_stock_fisico AND p_stock_existencia != p_stock_sistema THEN
+        SET p_estado = 'NUEVO_CONTEO_REQUERIDO';
+        SET p_mensaje = 'Ambos están mal respecto a la existencia calculada. Se requiere nuevo conteo';
+        
+    -- Caso 4: Todos coinciden
+    ELSE
+        SET p_estado = 'CONFORME';
+        SET p_mensaje = 'Todo está correcto';
+    END IF;
+END //
+DELIMITER ;
+
+-- 
+-- VISTA: Historial completo de acciones por inventario (COMPARACIÓN)
+-- 
+CREATE OR REPLACE VIEW v_historial_completo_comparaciones AS
+SELECT 
+    h.id,
+    h.inventario_id,
+    i.numero_inventario,
+    h.producto_item,
+    h.producto,
+    h.codigo,
+    h.almacen,
+    h.tipo_accion,
+    h.motivo,
+    h.cantidad_afectada,
+    h.error_de,
+    h.registrado_por,
+    h.fecha_hora,
+    DATE_FORMAT(h.fecha_hora, '%d/%m/%Y %H:%i:%s') as fecha_hora_formateada
+FROM historial_acciones_comparacion h
+JOIN inventarios i ON h.inventario_id = i.id
+ORDER BY h.fecha_hora DESC;
+
+
